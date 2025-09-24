@@ -7,6 +7,7 @@ const teamsConfigDiv = document.getElementById('teamsConfig');
 const addTeamButton = document.getElementById('addTeamButton');
 const arenaSelect = document.getElementById('arenaSelect');
 const startButton = document.getElementById('startButton');
+const battleInfo = document.getElementById('battleInfo');
 
 // Setup canvas dimensions
 canvas.width = 800;
@@ -79,7 +80,7 @@ function addTeamRow(color, count = 7) {
     teamRow.classList.add('team-setup');
     teamRow.setAttribute('data-team-id', teamIdCounter);
     teamRow.innerHTML = `
-        <label>Team ${teamIdCounter}</label>
+        <input type="text" class="team-name" value="Team ${teamIdCounter}" placeholder="Nama Tim">
         <input type="color" value="${color}">
         <input type="number" value="${count}" min="1" max="50">
         <button type="button" class="remove-team-btn">Remove</button>
@@ -227,7 +228,6 @@ class Projectile {
 function init(teams, arenaName) {
     boxes = [];
     projectiles = [];
-    activeTeams = teams; // Store for later
     obstacles = ARENA_LAYOUTS[arenaName].map(o => ({...o}));
     gameOver = false;
     
@@ -271,6 +271,8 @@ function drawObstacles() {
         ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
     }
 }
+
+
 
 function checkCollisions() {
     for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -359,6 +361,7 @@ function animate() {
 function showMenu() {
     startMenu.classList.remove('hidden');
     canvas.classList.add('hidden');
+    battleInfo.classList.add('hidden'); // Hide the info text
     // Re-create initial teams for the menu
     teamsConfigDiv.innerHTML = '';
     teamIdCounter = 0;
@@ -376,7 +379,7 @@ function startGame() {
     const teams = [];
     teamRows.forEach(row => {
         const id = parseInt(row.getAttribute('data-team-id'), 10);
-        const name = row.querySelector('label').textContent;
+        const name = row.querySelector('.team-name').value || `Team ${id}`;
         const color = row.querySelector('input[type="color"]').value;
         const count = parseInt(row.querySelector('input[type="number"]').value, 10);
         if (count > 0) {
@@ -386,8 +389,13 @@ function startGame() {
 
     const arenaName = arenaSelect.value;
 
+    activeTeams = teams;
+    const infoHtml = activeTeams.map(t => `<span style="color: ${t.color};">${t.count} ${t.name}</span>`).join(' <span class="vs-separator">VS</span> ');
+    battleInfo.innerHTML = infoHtml;
+
     startMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
+    battleInfo.classList.remove('hidden');
 
     init(teams, arenaName);
 }

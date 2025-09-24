@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Russo+One&display=swap');
+
 body {
     background-color: #121212;
     color: #FFFFFF;
@@ -14,6 +16,23 @@ body {
 canvas {
     background-color: #000000;
     border: 2px solid #FFFFFF;
+}
+
+#battleInfo {
+    font-family: 'Russo One', sans-serif;
+    font-size: 2em;
+    padding: 10px 20px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #2c3e50, #22303f);
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    border: 2px solid #34495e;
+}
+
+#battleInfo .vs-separator {
+    color: #ecf0f1;
+    margin: 0 15px;
+    font-size: 0.8em;
 }
 
 #startMenu {
@@ -77,6 +96,16 @@ canvas {
     padding: 5px;
     border-radius: 3px;
     background-color: #34495e;
+}
+
+#teamsConfig .team-setup .team-name {
+    width: 120px;
+    background-color: #121212;
+    color: #ecf0f1;
+    border: 1px solid #ecf0f1;
+    border-radius: 3px;
+    padding: 4px;
+    font-size: 1em;
 }
 
 #teamsConfig .team-setup input[type="color"] {
