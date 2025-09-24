@@ -1,6 +1,11 @@
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+// --- DOM Elements ---
+const startMenu = document.getElementById('startMenu');
+const blueTeamCountInput = document.getElementById('blueTeamCount');
+const redTeamCountInput = document.getElementById('redTeamCount');
+const startButton = document.getElementById('startButton');
 
 // Setup canvas dimensions
 canvas.width = 800;
@@ -10,7 +15,6 @@ canvas.height = 600;
 const BOX_SIZE = 20;
 const BOX_SPEED = 1.5;
 const HP_MAX = 100;
-const NUM_BOXES_PER_TEAM = 7;
 const PROJECTILE_SPEED = 4;
 const PROJECTILE_SIZE = 5;
 const PROJECTILE_DAMAGE = 10;
@@ -18,7 +22,6 @@ const FIRE_RATE = 60; // Lower is faster, 1 shot every 60 frames
 
 let boxes = [];
 let projectiles = [];
-let frameCount = 0;
 let gameOver = false;
 
 // --- Classes ---
@@ -137,20 +140,20 @@ class Projectile {
 }
 
 // --- Game Logic ---
-function init() {
+function init(blueCount, redCount) {
     boxes = [];
     projectiles = [];
     gameOver = false;
     
     // Create blue team on the left
-    for (let i = 0; i < NUM_BOXES_PER_TEAM; i++) {
+    for (let i = 0; i < blueCount; i++) {
         const x = Math.random() * (canvas.width / 4);
         const y = Math.random() * canvas.height;
         boxes.push(new Box(x, y, 'blue'));
     }
 
     // Create red team on the right
-    for (let i = 0; i < NUM_BOXES_PER_TEAM; i++) {
+    for (let i = 0; i < redCount; i++) {
         const x = canvas.width - (Math.random() * (canvas.width / 4));
         const y = Math.random() * canvas.height;
         boxes.push(new Box(x, y, 'red'));
@@ -166,7 +169,6 @@ function checkCollisions() {
         for (let j = boxes.length - 1; j >= 0; j--) {
             const b = boxes[j];
 
-            // Check if projectile p hits box b (and they are on different teams)
             if (p.team !== b.team &&
                 p.x > b.x &&
                 p.x < b.x + b.width &&
@@ -179,7 +181,7 @@ function checkCollisions() {
                 if (b.hp <= 0) {
                     boxes.splice(j, 1); // Remove box
                 }
-                break; // projectile can only hit one box
+                break; 
             }
         }
     }
@@ -192,7 +194,7 @@ function checkGameOver() {
     if (redTeamCount === 0 || blueTeamCount === 0) {
         gameOver = true;
         const winner = redTeamCount === 0 ? 'Blue Team' : 'Red Team';
-        displayWinner(winner);
+        setTimeout(() => displayWinner(winner), 1000); // Wait a second before showing winner
     }
 }
 
@@ -203,35 +205,33 @@ function displayWinner(winner) {
     ctx.fillStyle = 'white';
     ctx.font = '60px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 40);
+    ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
     
     ctx.fillStyle = winner === 'Blue Team' ? '#3498db' : '#e74c3c';
     ctx.font = '40px sans-serif';
-    ctx.fillText(`${winner} Wins!`, canvas.width / 2, canvas.height / 2 + 20);
-}
+    ctx.fillText(`${winner} Wins!`, canvas.width / 2, canvas.height / 2);
 
+    ctx.fillStyle = '#ecf0f1';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
+}
 
 function animate() {
     if (gameOver) return;
 
-    // Set up the next frame
     requestAnimationFrame(animate);
     
-    // Clear the canvas
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; //Slightly transparent black for motion blur effect
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Update and draw boxes
     boxes.forEach(box => {
         box.update();
         box.draw();
     });
 
-    // Update and draw projectiles
     projectiles.forEach((p, index) => {
         p.update();
         p.draw();
-        // Remove projectiles that go off-screen
         if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
             projectiles.splice(index, 1);
         }
@@ -239,9 +239,27 @@ function animate() {
     
     checkCollisions();
     checkGameOver();
-
-    frameCount++;
 }
 
-// --- Start Simulation ---
-init();
+function showMenu() {
+    startMenu.classList.remove('hidden');
+    canvas.classList.add('hidden');
+}
+
+function startGame() {
+    const blueCount = parseInt(blueTeamCountInput.value, 10);
+    const redCount = parseInt(redTeamCountInput.value, 10);
+
+    startMenu.classList.add('hidden');
+    canvas.classList.remove('hidden');
+
+    init(blueCount, redCount);
+}
+
+// --- Event Listeners ---
+startButton.addEventListener('click', startGame);
+canvas.addEventListener('click', () => {
+    if (gameOver) {
+        showMenu();
+    }
+});

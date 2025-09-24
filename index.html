@@ -8,7 +8,21 @@
 </head>
 <body>
     <h1>Box Fight Simulation</h1>
-    <canvas id="gameCanvas"></canvas>
+
+    <div id="startMenu">
+        <h2>Setup Battle</h2>
+        <div class="team-setup">
+            <label for="blueTeamCount">Blue Team:</label>
+            <input type="number" id="blueTeamCount" value="7" min="1" max="50">
+        </div>
+        <div class="team-setup">
+            <label for="redTeamCount">Red Team:</label>
+            <input type="number" id="redTeamCount" value="7" min="1" max="50">
+        </div>
+        <button id="startButton">Start Battle</button>
+    </div>
+
+    <canvas id="gameCanvas" class="hidden"></canvas>
     <script src="script.js"></script>
 </body>
 </html>
