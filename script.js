@@ -2,20 +2,19 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 // --- DOM Elements ---
-const startMenu = document.getElementById('startMenu');
+const modeMenu = document.getElementById('modeMenu');
+const classicModeButton = document.getElementById('classicModeButton');
+const powerupModeButton = document.getElementById('powerupModeButton');
+const battleSetupMenu = document.getElementById('battleSetupMenu');
 const teamsConfigDiv = document.getElementById('teamsConfig');
 const addTeamButton = document.getElementById('addTeamButton');
-const gameModeSelect = document.getElementById('gameModeSelect');
 const arenaSelect = document.getElementById('arenaSelect');
 const startButton = document.getElementById('startButton');
+const backToModeSelectButton = document.getElementById('backToModeSelectButton');
 const battleInfo = document.getElementById('battleInfo');
 const escapeMenu = document.getElementById('escapeMenu');
 const rematchButton = document.getElementById('rematchButton');
 const mainMenuButton = document.getElementById('mainMenuButton');
-
-// Setup canvas dimensions
-canvas.width = 800;
-canvas.height = 600;
 
 // --- Game Settings ---
 const BOX_SIZE = 20;
@@ -46,25 +45,16 @@ const ARENA_LAYOUTS = {
 };
 
 // --- Game State ---
-let boxes = [];
-let projectiles = [];
-let obstacles = [];
-let powerUps = [];
-let gameOver = false;
-let teamIdCounter = 0;
-let activeTeams = [];
-let isPaused = false;
+let boxes = [], projectiles = [], obstacles = [], powerUps = [];
+let gameOver = false, isPaused = false;
+let teamIdCounter = 0, powerUpSpawnCounter = 0;
+let activeTeams = [], currentArenaName, currentGameMode = 'classic';
 let animationFrameId;
-let currentArenaName;
-let currentGameMode = 'classic';
-let powerUpSpawnCounter = 0;
 
 // --- Utility ---
 function lightenColor(hex, percent) {
     hex = hex.replace(/^#/, '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
+    const r = parseInt(hex.substring(0, 2), 16), g = parseInt(hex.substring(2, 4), 16), b = parseInt(hex.substring(4, 6), 16);
     const newR = Math.min(255, r + (255 - r) * (percent / 100));
     const newG = Math.min(255, g + (255 - g) * (percent / 100));
     const newB = Math.min(255, b + (255 - b) * (percent / 100));
@@ -74,137 +64,56 @@ function lightenColor(hex, percent) {
 // --- Classes ---
 class PowerUp {
     constructor(x, y, type) {
-        this.x = x;
-        this.y = y;
-        this.type = type;
-        this.size = 15;
-        this.color = POWERUP_TYPES[type].color;
-        this.symbol = POWERUP_TYPES[type].symbol;
+        this.x = x; this.y = y; this.type = type; this.size = 15;
+        this.color = POWERUP_TYPES[type].color; this.symbol = POWERUP_TYPES[type].symbol;
     }
-
     draw() {
         ctx.save();
         ctx.fillStyle = this.color;
         ctx.beginPath();
         ctx.arc(this.x + this.size / 2, this.y + this.size / 2, this.size / 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(this.symbol, this.x + this.size / 2, this.y + this.size / 2 + 1);
+        ctx.fillStyle = 'white'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle'; ctx.fillText(this.symbol, this.x + this.size / 2, this.y + this.size / 2 + 1);
         ctx.restore();
     }
 }
 
 class Box {
     constructor(x, y, teamId, color, teamName) {
-        this.x = x; this.y = y;
-        this.width = BOX_SIZE; this.height = BOX_SIZE;
-        this.team = teamId; this.color = color; this.teamName = teamName;
-        this.hp = HP_MAX;
-        this.target = null;
-        this.fireCooldown = Math.random() * BASE_FIRE_RATE;
+        this.x = x; this.y = y; this.width = BOX_SIZE; this.height = BOX_SIZE;
+        this.team = teamId; this.color = color; this.teamName = teamName; this.hp = HP_MAX;
+        this.target = null; this.fireCooldown = Math.random() * BASE_FIRE_RATE;
         const angle = Math.random() * 2 * Math.PI;
-        this.dx = Math.cos(angle) * BOX_SPEED;
-        this.dy = Math.sin(angle) * BOX_SPEED;
-
-        // Power-up related stats
-        this.powerUpTimers = {}; // e.g., { DAMAGE: 300, FIRE_RATE: 300 }
+        this.dx = Math.cos(angle) * BOX_SPEED; this.dy = Math.sin(angle) * BOX_SPEED;
+        this.powerUpTimers = {};
     }
-
-    getCurrentDamage() {
-        return this.powerUpTimers.DAMAGE > 0 ? BASE_PROJECTILE_DAMAGE * 1.5 : BASE_PROJECTILE_DAMAGE;
-    }
-
-    getCurrentFireRate() {
-        return this.powerUpTimers.FIRE_RATE > 0 ? BASE_FIRE_RATE / 2 : BASE_FIRE_RATE;
-    }
-
-    updatePowerUps() {
-        for (const type in this.powerUpTimers) {
-            if (this.powerUpTimers[type] > 0) {
-                this.powerUpTimers[type]--;
-            }
-        }
-    }
-
+    getCurrentDamage() { return this.powerUpTimers.DAMAGE > 0 ? BASE_PROJECTILE_DAMAGE * 1.5 : BASE_PROJECTILE_DAMAGE; }
+    getCurrentFireRate() { return this.powerUpTimers.FIRE_RATE > 0 ? BASE_FIRE_RATE / 2 : BASE_FIRE_RATE; }
+    updatePowerUps() { for (const type in this.powerUpTimers) { if (this.powerUpTimers[type] > 0) { this.powerUpTimers[type]--; } } }
     draw() {
         ctx.fillStyle = this.color;
-        if (this.powerUpTimers.DAMAGE > 0) ctx.fillStyle = '#fffa65'; // Glowing effect for damage
+        if (this.powerUpTimers.DAMAGE > 0) ctx.fillStyle = '#fffa65';
         if (this.powerUpTimers.FIRE_RATE > 0) ctx.strokeStyle = '#3498db'; else ctx.strokeStyle = this.color;
-        
         ctx.lineWidth = this.powerUpTimers.FIRE_RATE > 0 ? 3 : 1;
         ctx.fillRect(this.x, this.y, this.width, this.height);
         ctx.strokeRect(this.x, this.y, this.width, this.height);
         ctx.lineWidth = 1;
-
         const hpBarWidth = (this.hp / HP_MAX) * this.width;
-        ctx.fillStyle = '#2ecc71';
-        ctx.fillRect(this.x, this.y - 7, hpBarWidth, 5);
-        ctx.strokeStyle = '#ecf0f1';
-        ctx.strokeRect(this.x, this.y - 7, this.width, 5);
+        ctx.fillStyle = '#2ecc71'; ctx.fillRect(this.x, this.y - 7, hpBarWidth, 5);
+        ctx.strokeStyle = '#ecf0f1'; ctx.strokeRect(this.x, this.y - 7, this.width, 5);
     }
-
-    update() {
-        this.move();
-        this.findTarget();
-        this.shoot();
-        if(currentGameMode === 'powerup') this.updatePowerUps();
-    }
-
-    move() {
-        this.x += this.dx; this.y += this.dy;
-        if (this.x <= 0) { this.x = 0; this.dx = -this.dx; } 
-        else if (this.x + this.width >= canvas.width) { this.x = canvas.width - this.width; this.dx = -this.dx; }
-        if (this.y <= 0) { this.y = 0; this.dy = -this.dy; } 
-        else if (this.y + this.height >= canvas.height) { this.y = canvas.height - this.height; this.dy = -this.dy; }
-
-        for (const obs of obstacles) {
-            if (this.x < obs.x + obs.width && this.x + this.width > obs.x && this.y < obs.y + obs.height && this.y + this.height > obs.y) {
-                const penX = (this.width / 2 + obs.width / 2) - Math.abs((this.x + this.width / 2) - (obs.x + obs.width / 2));
-                const penY = (this.height / 2 + obs.height / 2) - Math.abs((this.y + this.height / 2) - (obs.y + obs.height / 2));
-                if (penX < penY) {
-                    if ((this.x + this.width / 2) < (obs.x + obs.width / 2)) { this.x = obs.x - this.width; } else { this.x = obs.x + obs.width; }
-                    this.dx = -this.dx;
-                } else {
-                    if ((this.y + this.height / 2) < (obs.y + obs.height / 2)) { this.y = obs.y - this.height; } else { this.y = obs.y + obs.height; }
-                    this.dy = -this.dy;
-                }
-            }
-        }
-    }
-
-    findTarget() {
-        let closestEnemy = null, minDistance = Infinity;
-        for (const otherBox of boxes) {
-            if (otherBox.team !== this.team) {
-                const distance = Math.hypot(this.x - otherBox.x, this.y - otherBox.y);
-                if (distance < minDistance) { minDistance = distance; closestEnemy = otherBox; }
-            }
-        }
-        this.target = closestEnemy;
-    }
-
-    shoot() {
-        this.fireCooldown--;
-        if (this.target && this.fireCooldown <= 0) {
-            const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-            const p = new Projectile(this.x + this.width / 2, this.y + this.height / 2, angle, this.team, this.color, this.getCurrentDamage());
-            projectiles.push(p);
-            this.fireCooldown = this.getCurrentFireRate();
-        }
-    }
+    update() { this.move(); this.findTarget(); this.shoot(); if(currentGameMode === 'powerup') this.updatePowerUps(); }
+    move() { this.x += this.dx; this.y += this.dy; if (this.x <= 0) { this.x = 0; this.dx = -this.dx; } else if (this.x + this.width >= canvas.width) { this.x = canvas.width - this.width; this.dx = -this.dx; } if (this.y <= 0) { this.y = 0; this.dy = -this.dy; } else if (this.y + this.height >= canvas.height) { this.y = canvas.height - this.height; this.dy = -this.dy; } for (const obs of obstacles) { if (this.x < obs.x + obs.width && this.x + this.width > obs.x && this.y < obs.y + obs.height && this.y + this.height > obs.y) { const penX = (this.width / 2 + obs.width / 2) - Math.abs((this.x + this.width / 2) - (obs.x + obs.width / 2)); const penY = (this.height / 2 + obs.height / 2) - Math.abs((this.y + this.height / 2) - (obs.y + obs.height / 2)); if (penX < penY) { if ((this.x + this.width / 2) < (obs.x + obs.width / 2)) { this.x = obs.x - this.width; } else { this.x = obs.x + obs.width; } this.dx = -this.dx; } else { if ((this.y + this.height / 2) < (obs.y + obs.height / 2)) { this.y = obs.y - this.height; } else { this.y = obs.y + obs.height; } this.dy = -this.dy; } } } }
+    findTarget() { let closestEnemy = null, minDistance = Infinity; for (const otherBox of boxes) { if (otherBox.team !== this.team) { const distance = Math.hypot(this.x - otherBox.x, this.y - otherBox.y); if (distance < minDistance) { minDistance = distance; closestEnemy = otherBox; } } } this.target = closestEnemy; }
+    shoot() { this.fireCooldown--; if (this.target && this.fireCooldown <= 0) { const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x); const p = new Projectile(this.x + this.width / 2, this.y + this.height / 2, angle, this.team, this.color, this.getCurrentDamage()); projectiles.push(p); this.fireCooldown = this.getCurrentFireRate(); } }
 }
 
 class Projectile {
     constructor(x, y, angle, team, teamColor, damage) {
-        this.x = x; this.y = y;
-        this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
-        this.team = team;
-        this.color = lightenColor(teamColor, 50);
-        this.dx = Math.cos(angle) * PROJECTILE_SPEED;
-        this.dy = Math.sin(angle) * PROJECTILE_SPEED;
+        this.x = x; this.y = y; this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
+        this.team = team; this.color = lightenColor(teamColor, 50);
+        this.dx = Math.cos(angle) * PROJECTILE_SPEED; this.dy = Math.sin(angle) * PROJECTILE_SPEED;
         this.damage = damage;
     }
     draw() { ctx.fillStyle = this.color; ctx.fillRect(this.x - this.width / 2, this.y - this.height / 2, this.width, this.height); }
@@ -213,37 +122,19 @@ class Projectile {
 
 // --- Game Logic ---
 function init(teams, arenaName, mode) {
-    currentArenaName = arenaName;
-    currentGameMode = mode;
-    gameOver = false;
-    boxes = [];
-    projectiles = [];
-    powerUps = [];
-    powerUpSpawnCounter = 0;
+    currentArenaName = arenaName; currentGameMode = mode; gameOver = false;
+    boxes = []; projectiles = []; powerUps = []; powerUpSpawnCounter = 0;
     obstacles = ARENA_LAYOUTS[arenaName].map(o => ({ ...o }));
-
-    const teamCount = teams.length;
-    const angleIncrement = (2 * Math.PI) / teamCount;
-    const spawnRadius = Math.min(canvas.width, canvas.height) / 3;
-
+    const teamCount = teams.length, angleIncrement = (2 * Math.PI) / teamCount, spawnRadius = Math.min(canvas.width, canvas.height) / 3;
     teams.forEach((team, index) => {
-        const angle = index * angleIncrement;
-        const spawnCenterX = canvas.width / 2 + spawnRadius * Math.cos(angle);
-        const spawnCenterY = canvas.height / 2 + spawnRadius * Math.sin(angle);
-        const spawnArea = 100;
+        const angle = index * angleIncrement, spawnCenterX = canvas.width / 2 + spawnRadius * Math.cos(angle), spawnCenterY = canvas.height / 2 + spawnRadius * Math.sin(angle), spawnArea = 100;
         for (let i = 0; i < team.count; i++) {
             let x, y, validPos;
             do {
                 validPos = true;
-                x = spawnCenterX + (Math.random() - 0.5) * spawnArea;
-                y = spawnCenterY + (Math.random() - 0.5) * spawnArea;
-                x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x));
-                y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
-                for (const obs of obstacles) { // Check against obstacles
-                    if (x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) {
-                        validPos = false; break;
-                    }
-                }
+                x = spawnCenterX + (Math.random() - 0.5) * spawnArea; y = spawnCenterY + (Math.random() - 0.5) * spawnArea;
+                x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x)); y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
+                for (const obs of obstacles) { if (x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) { validPos = false; break; } }
             } while (!validPos);
             boxes.push(new Box(x, y, team.id, team.color, team.name));
         }
@@ -251,135 +142,115 @@ function init(teams, arenaName, mode) {
     animate();
 }
 
-function spawnRandomPowerUp() {
-    const typeKeys = Object.keys(POWERUP_TYPES);
-    const type = typeKeys[Math.floor(Math.random() * typeKeys.length)];
-    let x, y, validPos;
-    do {
-        validPos = true;
-        x = Math.random() * (canvas.width - 20) + 10;
-        y = Math.random() * (canvas.height - 20) + 10;
-        for (const obs of obstacles) { // Check against obstacles
-            if (x < obs.x + obs.width && x + 15 > obs.x && y < obs.y + obs.height && y + 15 > obs.y) {
-                validPos = false; break;
-            }
-        }
-    } while (!validPos);
-    powerUps.push(new PowerUp(x, y, type));
-}
-
-function drawObstacles() {
-    ctx.fillStyle = '#8395a7';
-    for (const obs of obstacles) {
-        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-    }
-}
-
-function checkCollisions() {
-    // Projectiles vs Boxes
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-        const p = projectiles[i];
-        let projectileRemoved = false;
-        for (let j = boxes.length - 1; j >= 0; j--) {
-            const b = boxes[j];
-            if (p.team !== b.team && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) {
-                b.hp -= p.damage;
-                projectiles.splice(i, 1);
-                projectileRemoved = true;
-                if (b.hp <= 0) { boxes.splice(j, 1); }
-                break;
-            }
-        }
-        if (projectileRemoved) continue;
-        for (const obs of obstacles) { // Projectiles vs Obstacles
-            if (p.x > obs.x && p.x < obs.x + obs.width && p.y > obs.y && p.y < obs.y + obs.height) {
-                projectiles.splice(i, 1); break;
-            }
-        }
-    }
-    // Boxes vs Power-ups
-    if (currentGameMode === 'powerup') {
-        for (let i = powerUps.length - 1; i >= 0; i--) {
-            const pu = powerUps[i];
-            for (const b of boxes) {
-                if (b.x < pu.x + pu.size && b.x + b.width > pu.x && b.y < pu.y + pu.size && b.y + b.height > pu.y) {
-                    applyPowerUp(b, pu);
-                    powerUps.splice(i, 1);
-                    break; // One box gets the power-up
-                }
-            }
-        }
-    }
-}
-
-function applyPowerUp(box, powerUp) {
-    switch (powerUp.type) {
-        case 'HEAL':
-            box.hp = Math.min(HP_MAX, box.hp + 50);
-            break;
-        case 'DAMAGE':
-            box.powerUpTimers.DAMAGE = POWERUP_DURATION;
-            break;
-        case 'FIRE_RATE':
-            box.powerUpTimers.FIRE_RATE = POWERUP_DURATION;
-            break;
-    }
-}
-
-function checkGameOver() {
-    if (boxes.length === 0) { gameOver = true; setTimeout(() => displayWinner(null), 1000); return; }
-    const remainingTeamIds = new Set(boxes.map(b => b.team));
-    if (remainingTeamIds.size <= 1) {
-        gameOver = true;
-        const winnerId = remainingTeamIds.values().next().value;
-        const winner = activeTeams.find(t => t.id === winnerId);
-        setTimeout(() => displayWinner(winner), 1000);
-    }
-}
-
-function displayWinner(winner) {
-    cancelAnimationFrame(animationFrameId);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'white'; ctx.font = '60px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
-    if (winner) {
-        ctx.fillStyle = winner.color; ctx.font = '40px sans-serif';
-        ctx.fillText(`${winner.name} Wins!`, canvas.width / 2, canvas.height / 2);
-    } else {
-        ctx.fillStyle = '#ecf0f1'; ctx.font = '40px sans-serif';
-        ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2);
-    }
-    ctx.fillStyle = '#ecf0f1'; ctx.font = '20px sans-serif';
-    ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
-}
-
 function animate() {
     if (gameOver) return;
     animationFrameId = requestAnimationFrame(animate);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawObstacles();
-    if (currentGameMode === 'powerup') {
-        powerUps.forEach(p => p.draw());
-        powerUpSpawnCounter++;
-        if (powerUpSpawnCounter >= POWERUP_SPAWN_INTERVAL) {
-            spawnRandomPowerUp();
-            powerUpSpawnCounter = 0;
-        }
-    }
-
+    if (currentGameMode === 'powerup') { powerUps.forEach(p => p.draw()); powerUpSpawnCounter++; if (powerUpSpawnCounter >= POWERUP_SPAWN_INTERVAL) { spawnRandomPowerUp(); powerUpSpawnCounter = 0; } }
     boxes.forEach(box => { box.update(); box.draw(); });
-    projectiles.forEach((p, index) => {
-        p.update(); p.draw();
-        if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) { projectiles.splice(index, 1); }
-    });
-    checkCollisions();
-    checkGameOver();
+    projectiles.forEach((p, index) => { p.update(); p.draw(); if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) { projectiles.splice(index, 1); } });
+    checkCollisions(); checkGameOver();
 }
 
-// --- Team & Menu Management ---
+function drawObstacles() { ctx.fillStyle = '#8395a7'; for (const obs of obstacles) { ctx.fillRect(obs.x, obs.y, obs.width, obs.height); } }
+
+function spawnRandomPowerUp() { const typeKeys = Object.keys(POWERUP_TYPES); const type = typeKeys[Math.floor(Math.random() * typeKeys.length)]; let x, y, validPos;
+ do {
+ validPos = true;
+ x = Math.random() * (canvas.width - 20) + 10;
+ y = Math.random() * (canvas.height - 20) + 10;
+ for (const obs of obstacles) { if (x < obs.x + obs.width && x + 15 > obs.x && y < obs.y + obs.height && y + 15 > obs.y) { validPos = false; break; } }
+ } while (!validPos);
+ powerUps.push(new PowerUp(x, y, type));
+}
+
+function checkCollisions() { for (let i = projectiles.length - 1; i >= 0; i--) { const p = projectiles[i]; let projectileRemoved = false;
+ for (let j = boxes.length - 1; j >= 0; j--) {
+ const b = boxes[j];
+ if (p.team !== b.team && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) {
+ b.hp -= p.damage;
+ projectiles.splice(i, 1);
+ projectileRemoved = true;
+ if (b.hp <= 0) {
+ boxes.splice(j, 1);
+ }
+ break;
+ }
+ }
+ if (projectileRemoved) continue;
+ for (const obs of obstacles) {
+ if (p.x > obs.x && p.x < obs.x + obs.width && p.y > obs.y && p.y < obs.y + obs.height) {
+ projectiles.splice(i, 1);
+ break;
+ }
+ }
+ }
+ if (currentGameMode === 'powerup') {
+ for (let i = powerUps.length - 1; i >= 0; i--) {
+ const pu = powerUps[i];
+ for (const b of boxes) {
+ if (b.x < pu.x + pu.size && b.x + b.width > pu.x && b.y < pu.y + pu.size && b.y + b.height > pu.y) {
+ applyPowerUp(b, pu);
+ powerUps.splice(i, 1);
+ break;
+ }
+ }
+ }
+ }
+}
+
+function applyPowerUp(box, powerUp) { switch (powerUp.type) { case 'HEAL': box.hp = Math.min(HP_MAX, box.hp + 50); break; case 'DAMAGE': box.powerUpTimers.DAMAGE = POWERUP_DURATION; break; case 'FIRE_RATE': box.powerUpTimers.FIRE_RATE = POWERUP_DURATION; break; } }
+
+function checkGameOver() { if (boxes.length === 0) { gameOver = true; setTimeout(() => displayWinner(null), 1000); return; }
+ const remainingTeamIds = new Set(boxes.map(b => b.team));
+ if (remainingTeamIds.size <= 1) {
+ gameOver = true;
+ const winnerId = remainingTeamIds.values().next().value;
+ const winner = activeTeams.find(t => t.id === winnerId);
+ setTimeout(() => displayWinner(winner), 1000);
+ }
+}
+
+function displayWinner(winner) { cancelAnimationFrame(animationFrameId);
+ ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+ ctx.fillStyle = 'white'; ctx.font = '60px sans-serif'; ctx.textAlign = 'center';
+ ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
+ if (winner) {
+ ctx.fillStyle = winner.color;
+ ctx.font = '40px sans-serif';
+ ctx.fillText(`${winner.name} Wins!`, canvas.width / 2, canvas.height / 2);
+ } else {
+ ctx.fillStyle = '#ecf0f1';
+ ctx.font = '40px sans-serif';
+ ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2);
+ }
+ ctx.fillStyle = '#ecf0f1';
+ ctx.font = '20px sans-serif';
+ ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
+}
+
+// --- UI & Menu Management ---
+function showModeMenu() {
+    cancelAnimationFrame(animationFrameId);
+    isPaused = false;
+    modeMenu.classList.remove('hidden');
+    battleSetupMenu.classList.add('hidden');
+    canvas.classList.add('hidden');
+    battleInfo.classList.add('hidden');
+    escapeMenu.classList.add('hidden');
+}
+
+function showBattleSetup(mode) {
+    currentGameMode = mode;
+    modeMenu.classList.add('hidden');
+    battleSetupMenu.classList.remove('hidden');
+    teamsConfigDiv.innerHTML = '';
+    teamIdCounter = 0;
+    addTeamRow('#3498db', 7);
+    addTeamRow('#e74c3c', 7);
+}
+
 function getRandomColor() {
     const letters = '0123456789ABCDEF'; let color = '#';
     for (let i = 0; i < 6; i++) { color += letters[Math.floor(Math.random() * 16)]; }
@@ -400,19 +271,6 @@ function addTeamRow(color, count = 7) {
     teamsConfigDiv.appendChild(teamRow);
 }
 
-function showMenu() {
-    cancelAnimationFrame(animationFrameId);
-    isPaused = false;
-    escapeMenu.classList.add('hidden');
-    startMenu.classList.remove('hidden');
-    battleInfo.classList.add('hidden');
-    canvas.classList.add('hidden');
-    teamsConfigDiv.innerHTML = '';
-    teamIdCounter = 0;
-    addTeamRow('#3498db', 7);
-    addTeamRow('#e74c3c', 7);
-}
-
 function startGame() {
     const teamRows = teamsConfigDiv.querySelectorAll('.team-setup');
     if (teamRows.length < 2) { alert("You need at least two teams to start a battle."); return; }
@@ -427,17 +285,17 @@ function startGame() {
     });
 
     const arenaName = arenaSelect.value;
-    const mode = gameModeSelect.value;
-
     activeTeams = teams;
+    currentArenaName = arenaName;
+
     const infoHtml = activeTeams.map(t => `<span style="color: ${t.color};">${t.count} ${t.name}</span>`).join(' <span class="vs-separator">VS</span> ');
     battleInfo.innerHTML = infoHtml;
 
-    startMenu.classList.add('hidden');
+    battleSetupMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
     battleInfo.classList.remove('hidden');
 
-    init(teams, arenaName, mode);
+    init(teams, arenaName, currentGameMode);
 }
 
 // --- Pause & Menu Logic ---
@@ -455,13 +313,17 @@ function togglePause(force) {
 }
 
 // --- Event Listeners ---
+classicModeButton.addEventListener('click', () => showBattleSetup('classic'));
+powerupModeButton.addEventListener('click', () => showBattleSetup('powerup'));
+backToModeSelectButton.addEventListener('click', showModeMenu);
 startButton.addEventListener('click', startGame);
-canvas.addEventListener('click', () => { if (gameOver) { showMenu(); } });
+canvas.addEventListener('click', () => { if (gameOver) { showModeMenu(); } });
 
 window.addEventListener('keydown', (e) => {
-    if (!startMenu.classList.contains('hidden')) return;
-    if (e.code === 'Space') { e.preventDefault(); if (!gameOver) { togglePause(); } }
-    if (e.code === 'Escape') { e.preventDefault(); if (!gameOver) { togglePause(true); } }
+    if (battleSetupMenu.classList.contains('hidden') && modeMenu.classList.contains('hidden')) {
+        if (e.code === 'Space') { e.preventDefault(); if (!gameOver) { togglePause(); } }
+        if (e.code === 'Escape') { e.preventDefault(); if (!gameOver) { togglePause(true); } }
+    }
 });
 
 rematchButton.addEventListener('click', () => {
@@ -470,7 +332,14 @@ rematchButton.addEventListener('click', () => {
     init(activeTeams, currentArenaName, currentGameMode);
 });
 
-mainMenuButton.addEventListener('click', () => { showMenu(); });
+mainMenuButton.addEventListener('click', showModeMenu);
+addTeamButton.addEventListener('click', () => addTeamRow(getRandomColor(), 7));
+teamsConfigDiv.addEventListener('click', (e) => {
+    if (e.target.classList.contains('remove-team-btn')) {
+        if (teamsConfigDiv.children.length > 2) { e.target.parentElement.remove(); }
+        else { alert("You need at least two teams to start a battle."); }
+    }
+});
 
 // --- Initial Setup ---
-showMenu();
+showModeMenu();
