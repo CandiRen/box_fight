@@ -5,6 +5,7 @@ const ctx = canvas.getContext('2d');
 const startMenu = document.getElementById('startMenu');
 const teamsConfigDiv = document.getElementById('teamsConfig');
 const addTeamButton = document.getElementById('addTeamButton');
+const gameModeSelect = document.getElementById('gameModeSelect');
 const arenaSelect = document.getElementById('arenaSelect');
 const startButton = document.getElementById('startButton');
 const battleInfo = document.getElementById('battleInfo');
@@ -22,61 +23,366 @@ const BOX_SPEED = 1.5;
 const HP_MAX = 100;
 const PROJECTILE_SPEED = 4;
 const PROJECTILE_SIZE = 5;
-const PROJECTILE_DAMAGE = 10;
-const FIRE_RATE = 60; // Lower is faster, 1 shot every 60 frames
+const BASE_PROJECTILE_DAMAGE = 10;
+const BASE_FIRE_RATE = 60; // Lower is faster
+
+// --- Power-up Settings ---
+const POWERUP_SPAWN_INTERVAL = 480; // frames, e.g., every 8 seconds
+const POWERUP_DURATION = 420; // frames, e.g., 7 seconds
+const POWERUP_TYPES = {
+    HEAL: { color: '#2ecc71', symbol: '+' },
+    DAMAGE: { color: '#e74c3c', symbol: 'D' },
+    FIRE_RATE: { color: '#3498db', symbol: 'F' }
+};
 
 // --- Arena Layouts ---
 const ARENA_LAYOUTS = {
     empty: [],
-    center_pillar: [
-        { x: canvas.width / 2 - 50, y: canvas.height / 2 - 50, width: 100, height: 100 }
-    ],
-    simple_maze: [
-        { x: 150, y: 0, width: 30, height: 400 },
-        { x: canvas.width - 180, y: canvas.height - 400, width: 30, height: 400 }
-    ],
-    fortress: [
-        // Blue Base barriers (more open design)
-        { x: 150, y: 150, width: 30, height: 100 },
-        { x: 150, y: 350, width: 30, height: 100 },
-        // Red Base barriers (more open design)
-        { x: canvas.width - 180, y: 150, width: 30, height: 100 },
-        { x: canvas.width - 180, y: 350, width: 30, height: 100 },
-    ],
-    two_pillars: [
-        { x: canvas.width / 3, y: 100, width: 30, height: 400 },
-        { x: (canvas.width / 3) * 2 - 30, y: 100, width: 30, height: 400 },
-    ],
-    asteroid_field: [
-        { x: 200, y: 100, width: 40, height: 40 },
-        { x: 560, y: 460, width: 40, height: 40 },
-        { x: 380, y: 300, width: 40, height: 40 },
-        { x: 150, y: 450, width: 40, height: 40 },
-        { x: 600, y: 120, width: 40, height: 40 },
-        { x: 300, y: 500, width: 40, height: 40 },
-        { x: 500, y: 250, width: 40, height: 40 },
-        { x: 250, y: 250, width: 40, height: 40 },
-        { x: 550, y: 350, width: 40, height: 40 },
-    ]
+    center_pillar: [ { x: canvas.width / 2 - 50, y: canvas.height / 2 - 50, width: 100, height: 100 } ],
+    simple_maze: [ { x: 150, y: 0, width: 30, height: 400 }, { x: canvas.width - 180, y: canvas.height - 400, width: 30, height: 400 } ],
+    fortress: [ { x: 150, y: 150, width: 30, height: 100 }, { x: 150, y: 350, width: 30, height: 100 }, { x: canvas.width - 180, y: 150, width: 30, height: 100 }, { x: canvas.width - 180, y: 350, width: 30, height: 100 }, ],
+    two_pillars: [ { x: canvas.width / 3, y: 100, width: 30, height: 400 }, { x: (canvas.width / 3) * 2 - 30, y: 100, width: 30, height: 400 }, ],
+    asteroid_field: [ { x: 200, y: 100, width: 40, height: 40 }, { x: 560, y: 460, width: 40, height: 40 }, { x: 380, y: 300, width: 40, height: 40 }, { x: 150, y: 450, width: 40, height: 40 }, { x: 600, y: 120, width: 40, height: 40 }, { x: 300, y: 500, width: 40, height: 40 }, { x: 500, y: 250, width: 40, height: 40 }, { x: 250, y: 250, width: 40, height: 40 }, { x: 550, y: 350, width: 40, height: 40 }, ]
 };
 
+// --- Game State ---
 let boxes = [];
 let projectiles = [];
 let obstacles = [];
+let powerUps = [];
 let gameOver = false;
 let teamIdCounter = 0;
-let activeTeams = []; // To store details of teams in the current game
+let activeTeams = [];
 let isPaused = false;
 let animationFrameId;
 let currentArenaName;
+let currentGameMode = 'classic';
+let powerUpSpawnCounter = 0;
 
-// --- Team Management UI ---
-function getRandomColor() {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
+// --- Utility ---
+function lightenColor(hex, percent) {
+    hex = hex.replace(/^#/, '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const newR = Math.min(255, r + (255 - r) * (percent / 100));
+    const newG = Math.min(255, g + (255 - g) * (percent / 100));
+    const newB = Math.min(255, b + (255 - b) * (percent / 100));
+    return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
+}
+
+// --- Classes ---
+class PowerUp {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.size = 15;
+        this.color = POWERUP_TYPES[type].color;
+        this.symbol = POWERUP_TYPES[type].symbol;
     }
+
+    draw() {
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x + this.size / 2, this.y + this.size / 2, this.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.symbol, this.x + this.size / 2, this.y + this.size / 2 + 1);
+        ctx.restore();
+    }
+}
+
+class Box {
+    constructor(x, y, teamId, color, teamName) {
+        this.x = x; this.y = y;
+        this.width = BOX_SIZE; this.height = BOX_SIZE;
+        this.team = teamId; this.color = color; this.teamName = teamName;
+        this.hp = HP_MAX;
+        this.target = null;
+        this.fireCooldown = Math.random() * BASE_FIRE_RATE;
+        const angle = Math.random() * 2 * Math.PI;
+        this.dx = Math.cos(angle) * BOX_SPEED;
+        this.dy = Math.sin(angle) * BOX_SPEED;
+
+        // Power-up related stats
+        this.powerUpTimers = {}; // e.g., { DAMAGE: 300, FIRE_RATE: 300 }
+    }
+
+    getCurrentDamage() {
+        return this.powerUpTimers.DAMAGE > 0 ? BASE_PROJECTILE_DAMAGE * 1.5 : BASE_PROJECTILE_DAMAGE;
+    }
+
+    getCurrentFireRate() {
+        return this.powerUpTimers.FIRE_RATE > 0 ? BASE_FIRE_RATE / 2 : BASE_FIRE_RATE;
+    }
+
+    updatePowerUps() {
+        for (const type in this.powerUpTimers) {
+            if (this.powerUpTimers[type] > 0) {
+                this.powerUpTimers[type]--;
+            }
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        if (this.powerUpTimers.DAMAGE > 0) ctx.fillStyle = '#fffa65'; // Glowing effect for damage
+        if (this.powerUpTimers.FIRE_RATE > 0) ctx.strokeStyle = '#3498db'; else ctx.strokeStyle = this.color;
+        
+        ctx.lineWidth = this.powerUpTimers.FIRE_RATE > 0 ? 3 : 1;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
+        ctx.lineWidth = 1;
+
+        const hpBarWidth = (this.hp / HP_MAX) * this.width;
+        ctx.fillStyle = '#2ecc71';
+        ctx.fillRect(this.x, this.y - 7, hpBarWidth, 5);
+        ctx.strokeStyle = '#ecf0f1';
+        ctx.strokeRect(this.x, this.y - 7, this.width, 5);
+    }
+
+    update() {
+        this.move();
+        this.findTarget();
+        this.shoot();
+        if(currentGameMode === 'powerup') this.updatePowerUps();
+    }
+
+    move() {
+        this.x += this.dx; this.y += this.dy;
+        if (this.x <= 0) { this.x = 0; this.dx = -this.dx; } 
+        else if (this.x + this.width >= canvas.width) { this.x = canvas.width - this.width; this.dx = -this.dx; }
+        if (this.y <= 0) { this.y = 0; this.dy = -this.dy; } 
+        else if (this.y + this.height >= canvas.height) { this.y = canvas.height - this.height; this.dy = -this.dy; }
+
+        for (const obs of obstacles) {
+            if (this.x < obs.x + obs.width && this.x + this.width > obs.x && this.y < obs.y + obs.height && this.y + this.height > obs.y) {
+                const penX = (this.width / 2 + obs.width / 2) - Math.abs((this.x + this.width / 2) - (obs.x + obs.width / 2));
+                const penY = (this.height / 2 + obs.height / 2) - Math.abs((this.y + this.height / 2) - (obs.y + obs.height / 2));
+                if (penX < penY) {
+                    if ((this.x + this.width / 2) < (obs.x + obs.width / 2)) { this.x = obs.x - this.width; } else { this.x = obs.x + obs.width; }
+                    this.dx = -this.dx;
+                } else {
+                    if ((this.y + this.height / 2) < (obs.y + obs.height / 2)) { this.y = obs.y - this.height; } else { this.y = obs.y + obs.height; }
+                    this.dy = -this.dy;
+                }
+            }
+        }
+    }
+
+    findTarget() {
+        let closestEnemy = null, minDistance = Infinity;
+        for (const otherBox of boxes) {
+            if (otherBox.team !== this.team) {
+                const distance = Math.hypot(this.x - otherBox.x, this.y - otherBox.y);
+                if (distance < minDistance) { minDistance = distance; closestEnemy = otherBox; }
+            }
+        }
+        this.target = closestEnemy;
+    }
+
+    shoot() {
+        this.fireCooldown--;
+        if (this.target && this.fireCooldown <= 0) {
+            const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+            const p = new Projectile(this.x + this.width / 2, this.y + this.height / 2, angle, this.team, this.color, this.getCurrentDamage());
+            projectiles.push(p);
+            this.fireCooldown = this.getCurrentFireRate();
+        }
+    }
+}
+
+class Projectile {
+    constructor(x, y, angle, team, teamColor, damage) {
+        this.x = x; this.y = y;
+        this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
+        this.team = team;
+        this.color = lightenColor(teamColor, 50);
+        this.dx = Math.cos(angle) * PROJECTILE_SPEED;
+        this.dy = Math.sin(angle) * PROJECTILE_SPEED;
+        this.damage = damage;
+    }
+    draw() { ctx.fillStyle = this.color; ctx.fillRect(this.x - this.width / 2, this.y - this.height / 2, this.width, this.height); }
+    update() { this.x += this.dx; this.y += this.dy; }
+}
+
+// --- Game Logic ---
+function init(teams, arenaName, mode) {
+    currentArenaName = arenaName;
+    currentGameMode = mode;
+    gameOver = false;
+    boxes = [];
+    projectiles = [];
+    powerUps = [];
+    powerUpSpawnCounter = 0;
+    obstacles = ARENA_LAYOUTS[arenaName].map(o => ({ ...o }));
+
+    const teamCount = teams.length;
+    const angleIncrement = (2 * Math.PI) / teamCount;
+    const spawnRadius = Math.min(canvas.width, canvas.height) / 3;
+
+    teams.forEach((team, index) => {
+        const angle = index * angleIncrement;
+        const spawnCenterX = canvas.width / 2 + spawnRadius * Math.cos(angle);
+        const spawnCenterY = canvas.height / 2 + spawnRadius * Math.sin(angle);
+        const spawnArea = 100;
+        for (let i = 0; i < team.count; i++) {
+            let x, y, validPos;
+            do {
+                validPos = true;
+                x = spawnCenterX + (Math.random() - 0.5) * spawnArea;
+                y = spawnCenterY + (Math.random() - 0.5) * spawnArea;
+                x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x));
+                y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
+                for (const obs of obstacles) { // Check against obstacles
+                    if (x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) {
+                        validPos = false; break;
+                    }
+                }
+            } while (!validPos);
+            boxes.push(new Box(x, y, team.id, team.color, team.name));
+        }
+    });
+    animate();
+}
+
+function spawnRandomPowerUp() {
+    const typeKeys = Object.keys(POWERUP_TYPES);
+    const type = typeKeys[Math.floor(Math.random() * typeKeys.length)];
+    let x, y, validPos;
+    do {
+        validPos = true;
+        x = Math.random() * (canvas.width - 20) + 10;
+        y = Math.random() * (canvas.height - 20) + 10;
+        for (const obs of obstacles) { // Check against obstacles
+            if (x < obs.x + obs.width && x + 15 > obs.x && y < obs.y + obs.height && y + 15 > obs.y) {
+                validPos = false; break;
+            }
+        }
+    } while (!validPos);
+    powerUps.push(new PowerUp(x, y, type));
+}
+
+function drawObstacles() {
+    ctx.fillStyle = '#8395a7';
+    for (const obs of obstacles) {
+        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    }
+}
+
+function checkCollisions() {
+    // Projectiles vs Boxes
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        let projectileRemoved = false;
+        for (let j = boxes.length - 1; j >= 0; j--) {
+            const b = boxes[j];
+            if (p.team !== b.team && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) {
+                b.hp -= p.damage;
+                projectiles.splice(i, 1);
+                projectileRemoved = true;
+                if (b.hp <= 0) { boxes.splice(j, 1); }
+                break;
+            }
+        }
+        if (projectileRemoved) continue;
+        for (const obs of obstacles) { // Projectiles vs Obstacles
+            if (p.x > obs.x && p.x < obs.x + obs.width && p.y > obs.y && p.y < obs.y + obs.height) {
+                projectiles.splice(i, 1); break;
+            }
+        }
+    }
+    // Boxes vs Power-ups
+    if (currentGameMode === 'powerup') {
+        for (let i = powerUps.length - 1; i >= 0; i--) {
+            const pu = powerUps[i];
+            for (const b of boxes) {
+                if (b.x < pu.x + pu.size && b.x + b.width > pu.x && b.y < pu.y + pu.size && b.y + b.height > pu.y) {
+                    applyPowerUp(b, pu);
+                    powerUps.splice(i, 1);
+                    break; // One box gets the power-up
+                }
+            }
+        }
+    }
+}
+
+function applyPowerUp(box, powerUp) {
+    switch (powerUp.type) {
+        case 'HEAL':
+            box.hp = Math.min(HP_MAX, box.hp + 50);
+            break;
+        case 'DAMAGE':
+            box.powerUpTimers.DAMAGE = POWERUP_DURATION;
+            break;
+        case 'FIRE_RATE':
+            box.powerUpTimers.FIRE_RATE = POWERUP_DURATION;
+            break;
+    }
+}
+
+function checkGameOver() {
+    if (boxes.length === 0) { gameOver = true; setTimeout(() => displayWinner(null), 1000); return; }
+    const remainingTeamIds = new Set(boxes.map(b => b.team));
+    if (remainingTeamIds.size <= 1) {
+        gameOver = true;
+        const winnerId = remainingTeamIds.values().next().value;
+        const winner = activeTeams.find(t => t.id === winnerId);
+        setTimeout(() => displayWinner(winner), 1000);
+    }
+}
+
+function displayWinner(winner) {
+    cancelAnimationFrame(animationFrameId);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white'; ctx.font = '60px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
+    if (winner) {
+        ctx.fillStyle = winner.color; ctx.font = '40px sans-serif';
+        ctx.fillText(`${winner.name} Wins!`, canvas.width / 2, canvas.height / 2);
+    } else {
+        ctx.fillStyle = '#ecf0f1'; ctx.font = '40px sans-serif';
+        ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2);
+    }
+    ctx.fillStyle = '#ecf0f1'; ctx.font = '20px sans-serif';
+    ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
+}
+
+function animate() {
+    if (gameOver) return;
+    animationFrameId = requestAnimationFrame(animate);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    drawObstacles();
+    if (currentGameMode === 'powerup') {
+        powerUps.forEach(p => p.draw());
+        powerUpSpawnCounter++;
+        if (powerUpSpawnCounter >= POWERUP_SPAWN_INTERVAL) {
+            spawnRandomPowerUp();
+            powerUpSpawnCounter = 0;
+        }
+    }
+
+    boxes.forEach(box => { box.update(); box.draw(); });
+    projectiles.forEach((p, index) => {
+        p.update(); p.draw();
+        if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) { projectiles.splice(index, 1); }
+    });
+    checkCollisions();
+    checkGameOver();
+}
+
+// --- Team & Menu Management ---
+function getRandomColor() {
+    const letters = '0123456789ABCDEF'; let color = '#';
+    for (let i = 0; i < 6; i++) { color += letters[Math.floor(Math.random() * 16)]; }
     return color;
 }
 
@@ -94,286 +400,13 @@ function addTeamRow(color, count = 7) {
     teamsConfigDiv.appendChild(teamRow);
 }
 
-addTeamButton.addEventListener('click', () => {
-    addTeamRow(getRandomColor(), 7);
-});
-
-teamsConfigDiv.addEventListener('click', (e) => {
-    if (e.target.classList.contains('remove-team-btn')) {
-        // Don't remove if only 2 teams are left
-        if (teamsConfigDiv.children.length > 2) {
-            e.target.parentElement.remove();
-        } else {
-            alert("You need at least two teams to start a battle.");
-        }
-    }
-});
-
-// --- Utility ---
-function lightenColor(hex, percent) {
-    hex = hex.replace(/^#/, '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-
-    const newR = Math.min(255, r + (255 - r) * (percent / 100));
-    const newG = Math.min(255, g + (255 - g) * (percent / 100));
-    const newB = Math.min(255, b + (255 - b) * (percent / 100));
-
-    return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
-}
-
-
-// --- Classes ---
-class Box {
-    constructor(x, y, teamId, color, teamName) {
-        this.x = x;
-        this.y = y;
-        this.width = BOX_SIZE;
-        this.height = BOX_SIZE;
-        this.team = teamId;
-        this.color = color;
-        this.teamName = teamName;
-        this.hp = HP_MAX;
-        this.target = null;
-        this.fireCooldown = Math.random() * FIRE_RATE;
-
-        const angle = Math.random() * 2 * Math.PI;
-        this.dx = Math.cos(angle) * BOX_SPEED;
-        this.dy = Math.sin(angle) * BOX_SPEED;
-    }
-
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-
-        const hpBarWidth = (this.hp / HP_MAX) * this.width;
-        ctx.fillStyle = '#2ecc71';
-        ctx.fillRect(this.x, this.y - 7, hpBarWidth, 5);
-        ctx.strokeStyle = '#ecf0f1';
-        ctx.strokeRect(this.x, this.y - 7, this.width, 5);
-    }
-
-    update() {
-        this.move();
-        this.findTarget();
-        this.shoot();
-    }
-
-    move() {
-        this.x += this.dx;
-        this.y += this.dy;
-
-        // Wall bouncing
-        if (this.x <= 0) { this.x = 0; this.dx = -this.dx; }
-        else if (this.x + this.width >= canvas.width) { this.x = canvas.width - this.width; this.dx = -this.dx; }
-        if (this.y <= 0) { this.y = 0; this.dy = -this.dy; }
-        else if (this.y + this.height >= canvas.height) { this.y = canvas.height - this.height; this.dy = -this.dy; }
-
-        // Obstacle bouncing
-        for (const obs of obstacles) {
-            if (this.x < obs.x + obs.width && this.x + this.width > obs.x &&
-                this.y < obs.y + obs.height && this.y + this.height > obs.y) {
-                
-                const penX = (this.width / 2 + obs.width / 2) - Math.abs((this.x + this.width / 2) - (obs.x + obs.width / 2));
-                const penY = (this.height / 2 + obs.height / 2) - Math.abs((this.y + this.height / 2) - (obs.y + obs.height / 2));
-
-                if (penX < penY) {
-                    if ((this.x + this.width / 2) < (obs.x + obs.width / 2)) { this.x = obs.x - this.width; } 
-                    else { this.x = obs.x + obs.width; }
-                    this.dx = -this.dx;
-                } else {
-                    if ((this.y + this.height / 2) < (obs.y + obs.height / 2)) { this.y = obs.y - this.height; } 
-                    else { this.y = obs.y + obs.height; }
-                    this.dy = -this.dy;
-                }
-            }
-        }
-    }
-
-    findTarget() {
-        let closestEnemy = null;
-        let minDistance = Infinity;
-        for (const otherBox of boxes) {
-            if (otherBox.team !== this.team) {
-                const distance = Math.hypot(this.x - otherBox.x, this.y - otherBox.y);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    closestEnemy = otherBox;
-                }
-            }
-        }
-        this.target = closestEnemy;
-    }
-
-    shoot() {
-        this.fireCooldown--;
-        if (this.target && this.fireCooldown <= 0) {
-            const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-            const p = new Projectile(this.x + this.width / 2, this.y + this.height / 2, angle, this.team, this.color);
-            projectiles.push(p);
-            this.fireCooldown = FIRE_RATE;
-        }
-    }
-}
-
-class Projectile {
-    constructor(x, y, angle, team, teamColor) {
-        this.x = x; this.y = y;
-        this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
-        this.team = team;
-        this.color = lightenColor(teamColor, 50);
-        this.dx = Math.cos(angle) * PROJECTILE_SPEED;
-        this.dy = Math.sin(angle) * PROJECTILE_SPEED;
-    }
-    draw() { ctx.fillStyle = this.color; ctx.fillRect(this.x - this.width / 2, this.y - this.height / 2, this.width, this.height); }
-    update() { this.x += this.dx; this.y += this.dy; }
-}
-
-// --- Game Logic ---
-function init(teams, arenaName) {
-    currentArenaName = arenaName; // Store arena
-    boxes = [];
-    projectiles = [];
-    obstacles = ARENA_LAYOUTS[arenaName].map(o => ({...o}));
-    gameOver = false;
-    
-    const teamCount = teams.length;
-    const angleIncrement = (2 * Math.PI) / teamCount;
-    const spawnRadius = Math.min(canvas.width, canvas.height) / 3;
-
-    teams.forEach((team, index) => {
-        const angle = index * angleIncrement;
-        const spawnCenterX = canvas.width / 2 + spawnRadius * Math.cos(angle);
-        const spawnCenterY = canvas.height / 2 + spawnRadius * Math.sin(angle);
-        const spawnArea = 100;
-
-        for (let i = 0; i < team.count; i++) {
-            let x, y, validPos;
-            do {
-                validPos = true;
-                x = spawnCenterX + (Math.random() - 0.5) * spawnArea;
-                y = spawnCenterY + (Math.random() - 0.5) * spawnArea;
-                
-                // Clamp to canvas bounds
-                x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x));
-                y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
-
-                for(const obs of obstacles) {
-                    if(x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) {
-                        validPos = false; break;
-                    }
-                }
-            } while (!validPos);
-            boxes.push(new Box(x, y, team.id, team.color, team.name));
-        }
-    });
-    
-    animate();
-}
-
-function drawObstacles() {
-    ctx.fillStyle = '#8395a7';
-    for (const obs of obstacles) {
-        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-    }
-}
-
-
-
-function checkCollisions() {
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-        const p = projectiles[i];
-        let projectileRemoved = false;
-
-        for (let j = boxes.length - 1; j >= 0; j--) {
-            const b = boxes[j];
-            if (p.team !== b.team && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) {
-                b.hp -= PROJECTILE_DAMAGE;
-                projectiles.splice(i, 1);
-                projectileRemoved = true;
-                if (b.hp <= 0) { boxes.splice(j, 1); }
-                break;
-            }
-        }
-
-        if (projectileRemoved) continue;
-
-        for (const obs of obstacles) {
-            if (p.x > obs.x && p.x < obs.x + obs.width && p.y > obs.y && p.y < obs.y + obs.height) {
-                projectiles.splice(i, 1);
-                break;
-            }
-        }
-    }
-}
-
-function checkGameOver() {
-    if (boxes.length === 0) {
-        gameOver = true;
-        setTimeout(() => displayWinner(null), 1000); // Draw
-        return;
-    }
-
-    const remainingTeamIds = new Set(boxes.map(b => b.team));
-    if (remainingTeamIds.size <= 1) {
-        gameOver = true;
-        const winnerId = remainingTeamIds.values().next().value;
-        const winner = activeTeams.find(t => t.id === winnerId);
-        setTimeout(() => displayWinner(winner), 1000);
-    }
-}
-
-function displayWinner(winner) {
-    cancelAnimationFrame(animationFrameId);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'white';
-    ctx.font = '60px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
-    
-    if (winner) {
-        ctx.fillStyle = winner.color;
-        ctx.font = '40px sans-serif';
-        ctx.fillText(`${winner.name} Wins!`, canvas.width / 2, canvas.height / 2);
-    } else {
-        ctx.fillStyle = '#ecf0f1';
-        ctx.font = '40px sans-serif';
-        ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2);
-    }
-
-    ctx.fillStyle = '#ecf0f1';
-    ctx.font = '20px sans-serif';
-    ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
-}
-
-function animate() {
-    if (gameOver) return;
-    animationFrameId = requestAnimationFrame(animate);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawObstacles();
-    boxes.forEach(box => { box.update(); box.draw(); });
-    projectiles.forEach((p, index) => {
-        p.update();
-        p.draw();
-        if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
-            projectiles.splice(index, 1);
-        }
-    });
-    checkCollisions();
-    checkGameOver();
-}
-
 function showMenu() {
     cancelAnimationFrame(animationFrameId);
     isPaused = false;
     escapeMenu.classList.add('hidden');
     startMenu.classList.remove('hidden');
+    battleInfo.classList.add('hidden');
     canvas.classList.add('hidden');
-    battleInfo.classList.add('hidden'); // Hide the info text
-    // Re-create initial teams for the menu
     teamsConfigDiv.innerHTML = '';
     teamIdCounter = 0;
     addTeamRow('#3498db', 7);
@@ -382,10 +415,7 @@ function showMenu() {
 
 function startGame() {
     const teamRows = teamsConfigDiv.querySelectorAll('.team-setup');
-    if (teamRows.length < 2) {
-        alert("You need at least two teams to start a battle.");
-        return;
-    }
+    if (teamRows.length < 2) { alert("You need at least two teams to start a battle."); return; }
 
     const teams = [];
     teamRows.forEach(row => {
@@ -393,12 +423,11 @@ function startGame() {
         const name = row.querySelector('.team-name').value || `Team ${id}`;
         const color = row.querySelector('input[type="color"]').value;
         const count = parseInt(row.querySelector('input[type="number"]').value, 10);
-        if (count > 0) {
-            teams.push({ id, name, color, count });
-        }
+        if (count > 0) { teams.push({ id, name, color, count }); }
     });
 
     const arenaName = arenaSelect.value;
+    const mode = gameModeSelect.value;
 
     activeTeams = teams;
     const infoHtml = activeTeams.map(t => `<span style="color: ${t.color};">${t.count} ${t.name}</span>`).join(' <span class="vs-separator">VS</span> ');
@@ -408,20 +437,18 @@ function startGame() {
     canvas.classList.remove('hidden');
     battleInfo.classList.remove('hidden');
 
-    init(teams, arenaName);
+    init(teams, arenaName, mode);
 }
 
 // --- Pause & Menu Logic ---
 function togglePause(force) {
     if (gameOver) return;
     isPaused = force !== undefined ? force : !isPaused;
-
     if (isPaused) {
         cancelAnimationFrame(animationFrameId);
         escapeMenu.classList.remove('hidden');
     } else {
         escapeMenu.classList.add('hidden');
-        // Sanity check to prevent multiple loops
         cancelAnimationFrame(animationFrameId);
         animate();
     }
@@ -429,43 +456,21 @@ function togglePause(force) {
 
 // --- Event Listeners ---
 startButton.addEventListener('click', startGame);
-
-canvas.addEventListener('click', () => {
-    if (gameOver) {
-        showMenu();
-    }
-});
+canvas.addEventListener('click', () => { if (gameOver) { showMenu(); } });
 
 window.addEventListener('keydown', (e) => {
-    // Don't do anything if game is not running (i.e., start menu is visible)
     if (!startMenu.classList.contains('hidden')) return;
-
-    if (e.code === 'Space') {
-        e.preventDefault();
-        if (!gameOver) { // Don't allow pause/resume after game over
-             togglePause();
-        }
-    }
-    if (e.code === 'Escape') {
-        e.preventDefault();
-        if (!gameOver) { // Don't allow pause/resume after game over
-            togglePause(true); // Force pause and show menu
-        }
-    }
+    if (e.code === 'Space') { e.preventDefault(); if (!gameOver) { togglePause(); } }
+    if (e.code === 'Escape') { e.preventDefault(); if (!gameOver) { togglePause(true); } }
 });
 
 rematchButton.addEventListener('click', () => {
-    // No need to toggle pause, init will restart the game loop
     escapeMenu.classList.add('hidden');
     isPaused = false;
-    init(activeTeams, currentArenaName);
+    init(activeTeams, currentArenaName, currentGameMode);
 });
 
-mainMenuButton.addEventListener('click', () => {
-    // No need to toggle pause, showMenu handles it
-    showMenu();
-});
-
+mainMenuButton.addEventListener('click', () => { showMenu(); });
 
 // --- Initial Setup ---
 showMenu();
