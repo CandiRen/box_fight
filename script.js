@@ -8,6 +8,9 @@ const addTeamButton = document.getElementById('addTeamButton');
 const arenaSelect = document.getElementById('arenaSelect');
 const startButton = document.getElementById('startButton');
 const battleInfo = document.getElementById('battleInfo');
+const escapeMenu = document.getElementById('escapeMenu');
+const rematchButton = document.getElementById('rematchButton');
+const mainMenuButton = document.getElementById('mainMenuButton');
 
 // Setup canvas dimensions
 canvas.width = 800;
@@ -63,6 +66,9 @@ let obstacles = [];
 let gameOver = false;
 let teamIdCounter = 0;
 let activeTeams = []; // To store details of teams in the current game
+let isPaused = false;
+let animationFrameId;
+let currentArenaName;
 
 // --- Team Management UI ---
 function getRandomColor() {
@@ -226,6 +232,7 @@ class Projectile {
 
 // --- Game Logic ---
 function init(teams, arenaName) {
+    currentArenaName = arenaName; // Store arena
     boxes = [];
     projectiles = [];
     obstacles = ARENA_LAYOUTS[arenaName].map(o => ({...o}));
@@ -318,6 +325,7 @@ function checkGameOver() {
 }
 
 function displayWinner(winner) {
+    cancelAnimationFrame(animationFrameId);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'white';
@@ -342,7 +350,7 @@ function displayWinner(winner) {
 
 function animate() {
     if (gameOver) return;
-    requestAnimationFrame(animate);
+    animationFrameId = requestAnimationFrame(animate);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawObstacles();
@@ -359,6 +367,9 @@ function animate() {
 }
 
 function showMenu() {
+    cancelAnimationFrame(animationFrameId);
+    isPaused = false;
+    escapeMenu.classList.add('hidden');
     startMenu.classList.remove('hidden');
     canvas.classList.add('hidden');
     battleInfo.classList.add('hidden'); // Hide the info text
@@ -400,13 +411,61 @@ function startGame() {
     init(teams, arenaName);
 }
 
+// --- Pause & Menu Logic ---
+function togglePause(force) {
+    if (gameOver) return;
+    isPaused = force !== undefined ? force : !isPaused;
+
+    if (isPaused) {
+        cancelAnimationFrame(animationFrameId);
+        escapeMenu.classList.remove('hidden');
+    } else {
+        escapeMenu.classList.add('hidden');
+        // Sanity check to prevent multiple loops
+        cancelAnimationFrame(animationFrameId);
+        animate();
+    }
+}
+
 // --- Event Listeners ---
 startButton.addEventListener('click', startGame);
-cvas.addEventListener('click', () => {
+
+canvas.addEventListener('click', () => {
     if (gameOver) {
         showMenu();
     }
 });
+
+window.addEventListener('keydown', (e) => {
+    // Don't do anything if game is not running (i.e., start menu is visible)
+    if (!startMenu.classList.contains('hidden')) return;
+
+    if (e.code === 'Space') {
+        e.preventDefault();
+        if (!gameOver) { // Don't allow pause/resume after game over
+             togglePause();
+        }
+    }
+    if (e.code === 'Escape') {
+        e.preventDefault();
+        if (!gameOver) { // Don't allow pause/resume after game over
+            togglePause(true); // Force pause and show menu
+        }
+    }
+});
+
+rematchButton.addEventListener('click', () => {
+    // No need to toggle pause, init will restart the game loop
+    escapeMenu.classList.add('hidden');
+    isPaused = false;
+    init(activeTeams, currentArenaName);
+});
+
+mainMenuButton.addEventListener('click', () => {
+    // No need to toggle pause, showMenu handles it
+    showMenu();
+});
+
 
 // --- Initial Setup ---
 showMenu();

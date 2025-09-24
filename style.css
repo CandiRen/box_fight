@@ -145,6 +145,60 @@ canvas {
     background-color: #2980b9;
 }
 
+#escapeMenu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(44, 62, 80, 0.95);
+    padding: 40px;
+    border-radius: 10px;
+    border: 2px solid #ecf0f1;
+    text-align: center;
+    z-index: 100;
+}
+
+#escapeMenu h2 {
+    margin-top: 0;
+    font-family: 'Russo One', sans-serif;
+    color: #ecf0f1;
+    font-size: 2.5em;
+}
+
+#escapeMenu button {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    font-size: 1.3em;
+    cursor: pointer;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin: 15px 0;
+    transition: background-color 0.3s;
+}
+
+#escapeMenu #rematchButton {
+    background-color: #27ae60;
+}
+#escapeMenu #rematchButton:hover {
+    background-color: #2ecc71;
+}
+
+#escapeMenu #mainMenuButton {
+    background-color: #c0392b;
+}
+#escapeMenu #mainMenuButton:hover {
+    background-color: #e74c3c;
+}
+
+#escapeMenu p {
+    color: #bdc3c7;
+    font-size: 0.9em;
+    margin-top: 20px;
+}
+
+
 
 .hidden {
     display: none;
