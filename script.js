@@ -1,11 +1,10 @@
-
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 // --- DOM Elements ---
 const startMenu = document.getElementById('startMenu');
-const blueTeamCountInput = document.getElementById('blueTeamCount');
-const redTeamCountInput = document.getElementById('redTeamCount');
+const teamsConfigDiv = document.getElementById('teamsConfig');
+const addTeamButton = document.getElementById('addTeamButton');
 const arenaSelect = document.getElementById('arenaSelect');
 const startButton = document.getElementById('startButton');
 
@@ -61,16 +60,73 @@ let boxes = [];
 let projectiles = [];
 let obstacles = [];
 let gameOver = false;
+let teamIdCounter = 0;
+let activeTeams = []; // To store details of teams in the current game
+
+// --- Team Management UI ---
+function getRandomColor() {
+    const letters = '0123456789ABCDEF';
+    let color = '#';
+    for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+}
+
+function addTeamRow(color, count = 7) {
+    teamIdCounter++;
+    const teamRow = document.createElement('div');
+    teamRow.classList.add('team-setup');
+    teamRow.setAttribute('data-team-id', teamIdCounter);
+    teamRow.innerHTML = `
+        <label>Team ${teamIdCounter}</label>
+        <input type="color" value="${color}">
+        <input type="number" value="${count}" min="1" max="50">
+        <button type="button" class="remove-team-btn">Remove</button>
+    `;
+    teamsConfigDiv.appendChild(teamRow);
+}
+
+addTeamButton.addEventListener('click', () => {
+    addTeamRow(getRandomColor(), 7);
+});
+
+teamsConfigDiv.addEventListener('click', (e) => {
+    if (e.target.classList.contains('remove-team-btn')) {
+        // Don't remove if only 2 teams are left
+        if (teamsConfigDiv.children.length > 2) {
+            e.target.parentElement.remove();
+        } else {
+            alert("You need at least two teams to start a battle.");
+        }
+    }
+});
+
+// --- Utility ---
+function lightenColor(hex, percent) {
+    hex = hex.replace(/^#/, '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    const newR = Math.min(255, r + (255 - r) * (percent / 100));
+    const newG = Math.min(255, g + (255 - g) * (percent / 100));
+    const newB = Math.min(255, b + (255 - b) * (percent / 100));
+
+    return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
+}
+
 
 // --- Classes ---
 class Box {
-    constructor(x, y, team) {
+    constructor(x, y, teamId, color, teamName) {
         this.x = x;
         this.y = y;
         this.width = BOX_SIZE;
         this.height = BOX_SIZE;
-        this.team = team;
-        this.color = team === 'blue' ? '#3498db' : '#e74c3c';
+        this.team = teamId;
+        this.color = color;
+        this.teamName = teamName;
         this.hp = HP_MAX;
         this.target = null;
         this.fireCooldown = Math.random() * FIRE_RATE;
@@ -112,23 +168,16 @@ class Box {
             if (this.x < obs.x + obs.width && this.x + this.width > obs.x &&
                 this.y < obs.y + obs.height && this.y + this.height > obs.y) {
                 
-                // Collision detected, resolve it
                 const penX = (this.width / 2 + obs.width / 2) - Math.abs((this.x + this.width / 2) - (obs.x + obs.width / 2));
                 const penY = (this.height / 2 + obs.height / 2) - Math.abs((this.y + this.height / 2) - (obs.y + obs.height / 2));
 
-                if (penX < penY) { // Horizontal collision has less penetration, resolve horizontally
-                    if ((this.x + this.width / 2) < (obs.x + obs.width / 2)) {
-                        this.x = obs.x - this.width; // Push left
-                    } else {
-                        this.x = obs.x + obs.width; // Push right
-                    }
+                if (penX < penY) {
+                    if ((this.x + this.width / 2) < (obs.x + obs.width / 2)) { this.x = obs.x - this.width; } 
+                    else { this.x = obs.x + obs.width; }
                     this.dx = -this.dx;
-                } else { // Vertical collision
-                    if ((this.y + this.height / 2) < (obs.y + obs.height / 2)) {
-                        this.y = obs.y - this.height; // Push up
-                    } else {
-                        this.y = obs.y + obs.height; // Push down
-                    }
+                } else {
+                    if ((this.y + this.height / 2) < (obs.y + obs.height / 2)) { this.y = obs.y - this.height; } 
+                    else { this.y = obs.y + obs.height; }
                     this.dy = -this.dy;
                 }
             }
@@ -154,7 +203,7 @@ class Box {
         this.fireCooldown--;
         if (this.target && this.fireCooldown <= 0) {
             const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-            const p = new Projectile(this.x + this.width / 2, this.y + this.height / 2, angle, this.team);
+            const p = new Projectile(this.x + this.width / 2, this.y + this.height / 2, angle, this.team, this.color);
             projectiles.push(p);
             this.fireCooldown = FIRE_RATE;
         }
@@ -162,11 +211,11 @@ class Box {
 }
 
 class Projectile {
-    constructor(x, y, angle, team) {
+    constructor(x, y, angle, team, teamColor) {
         this.x = x; this.y = y;
         this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
         this.team = team;
-        this.color = team === 'blue' ? '#5dade2' : '#f1948a'; // Team-based colors
+        this.color = lightenColor(teamColor, 50);
         this.dx = Math.cos(angle) * PROJECTILE_SPEED;
         this.dy = Math.sin(angle) * PROJECTILE_SPEED;
     }
@@ -175,49 +224,49 @@ class Projectile {
 }
 
 // --- Game Logic ---
-function init(blueCount, redCount, arenaName) {
+function init(teams, arenaName) {
     boxes = [];
     projectiles = [];
-    obstacles = ARENA_LAYOUTS[arenaName].map(o => ({...o})); // Deep copy
+    activeTeams = teams; // Store for later
+    obstacles = ARENA_LAYOUTS[arenaName].map(o => ({...o}));
     gameOver = false;
     
-    // Create blue team
-    for (let i = 0; i < blueCount; i++) {
-        let x, y, validPos;
-        do {
-            validPos = true;
-            x = Math.random() * (canvas.width / 4);
-            y = Math.random() * canvas.height;
-            for(const obs of obstacles) {
-                if(x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) {
-                    validPos = false; break;
-                }
-            }
-        } while (!validPos);
-        boxes.push(new Box(x, y, 'blue'));
-    }
+    const teamCount = teams.length;
+    const angleIncrement = (2 * Math.PI) / teamCount;
+    const spawnRadius = Math.min(canvas.width, canvas.height) / 3;
 
-    // Create red team
-    for (let i = 0; i < redCount; i++) {
-        let x, y, validPos;
-        do {
-            validPos = true;
-            x = canvas.width - (Math.random() * (canvas.width / 4));
-            y = Math.random() * canvas.height;
-            for(const obs of obstacles) {
-                if(x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) {
-                    validPos = false; break;
+    teams.forEach((team, index) => {
+        const angle = index * angleIncrement;
+        const spawnCenterX = canvas.width / 2 + spawnRadius * Math.cos(angle);
+        const spawnCenterY = canvas.height / 2 + spawnRadius * Math.sin(angle);
+        const spawnArea = 100;
+
+        for (let i = 0; i < team.count; i++) {
+            let x, y, validPos;
+            do {
+                validPos = true;
+                x = spawnCenterX + (Math.random() - 0.5) * spawnArea;
+                y = spawnCenterY + (Math.random() - 0.5) * spawnArea;
+                
+                // Clamp to canvas bounds
+                x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x));
+                y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
+
+                for(const obs of obstacles) {
+                    if(x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) {
+                        validPos = false; break;
+                    }
                 }
-            }
-        } while (!validPos);
-        boxes.push(new Box(x, y, 'red'));
-    }
+            } while (!validPos);
+            boxes.push(new Box(x, y, team.id, team.color, team.name));
+        }
+    });
     
     animate();
 }
 
 function drawObstacles() {
-    ctx.fillStyle = '#8395a7'; // Grey color for obstacles
+    ctx.fillStyle = '#8395a7';
     for (const obs of obstacles) {
         ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
     }
@@ -228,7 +277,6 @@ function checkCollisions() {
         const p = projectiles[i];
         let projectileRemoved = false;
 
-        // Check collision with boxes
         for (let j = boxes.length - 1; j >= 0; j--) {
             const b = boxes[j];
             if (p.team !== b.team && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) {
@@ -242,7 +290,6 @@ function checkCollisions() {
 
         if (projectileRemoved) continue;
 
-        // Check collision with obstacles
         for (const obs of obstacles) {
             if (p.x > obs.x && p.x < obs.x + obs.width && p.y > obs.y && p.y < obs.y + obs.height) {
                 projectiles.splice(i, 1);
@@ -253,12 +300,17 @@ function checkCollisions() {
 }
 
 function checkGameOver() {
-    const redTeamCount = boxes.filter(b => b.team === 'red').length;
-    const blueTeamCount = boxes.filter(b => b.team === 'blue').length;
-
-    if (redTeamCount === 0 || blueTeamCount === 0) {
+    if (boxes.length === 0) {
         gameOver = true;
-        const winner = redTeamCount === 0 ? 'Blue Team' : 'Red Team';
+        setTimeout(() => displayWinner(null), 1000); // Draw
+        return;
+    }
+
+    const remainingTeamIds = new Set(boxes.map(b => b.team));
+    if (remainingTeamIds.size <= 1) {
+        gameOver = true;
+        const winnerId = remainingTeamIds.values().next().value;
+        const winner = activeTeams.find(t => t.id === winnerId);
         setTimeout(() => displayWinner(winner), 1000);
     }
 }
@@ -270,9 +322,17 @@ function displayWinner(winner) {
     ctx.font = '60px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
-    ctx.fillStyle = winner === 'Blue Team' ? '#3498db' : '#e74c3c';
-    ctx.font = '40px sans-serif';
-    ctx.fillText(`${winner} Wins!`, canvas.width / 2, canvas.height / 2);
+    
+    if (winner) {
+        ctx.fillStyle = winner.color;
+        ctx.font = '40px sans-serif';
+        ctx.fillText(`${winner.name} Wins!`, canvas.width / 2, canvas.height / 2);
+    } else {
+        ctx.fillStyle = '#ecf0f1';
+        ctx.font = '40px sans-serif';
+        ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2);
+    }
+
     ctx.fillStyle = '#ecf0f1';
     ctx.font = '20px sans-serif';
     ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
@@ -299,23 +359,46 @@ function animate() {
 function showMenu() {
     startMenu.classList.remove('hidden');
     canvas.classList.add('hidden');
+    // Re-create initial teams for the menu
+    teamsConfigDiv.innerHTML = '';
+    teamIdCounter = 0;
+    addTeamRow('#3498db', 7);
+    addTeamRow('#e74c3c', 7);
 }
 
 function startGame() {
-    const blueCount = parseInt(blueTeamCountInput.value, 10);
-    const redCount = parseInt(redTeamCountInput.value, 10);
+    const teamRows = teamsConfigDiv.querySelectorAll('.team-setup');
+    if (teamRows.length < 2) {
+        alert("You need at least two teams to start a battle.");
+        return;
+    }
+
+    const teams = [];
+    teamRows.forEach(row => {
+        const id = parseInt(row.getAttribute('data-team-id'), 10);
+        const name = row.querySelector('label').textContent;
+        const color = row.querySelector('input[type="color"]').value;
+        const count = parseInt(row.querySelector('input[type="number"]').value, 10);
+        if (count > 0) {
+            teams.push({ id, name, color, count });
+        }
+    });
+
     const arenaName = arenaSelect.value;
 
     startMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
 
-    init(blueCount, redCount, arenaName);
+    init(teams, arenaName);
 }
 
 // --- Event Listeners ---
 startButton.addEventListener('click', startGame);
-canvas.addEventListener('click', () => {
+cvas.addEventListener('click', () => {
     if (gameOver) {
         showMenu();
     }
 });
+
+// --- Initial Setup ---
+showMenu();
