@@ -200,7 +200,50 @@ function checkCollisions() { for (let i = projectiles.length - 1; i >= 0; i--) {
  }
  }
  }
-}
+
+    // Box to Box collisions (only if HP < 100)
+    for (let i = 0; i < boxes.length; i++) {
+        const b1 = boxes[i];
+        for (let j = i + 1; j < boxes.length; j++) { // Avoid self-collision and duplicate checks
+            const b2 = boxes[j];
+
+            // Only apply collision if both boxes are damaged (HP < 100)
+            if (b1.hp < HP_MAX && b2.hp < HP_MAX) {
+                // Check for overlap (AABB collision)
+                if (b1.x < b2.x + b2.width && b1.x + b1.width > b2.x &&
+                    b1.y < b2.y + b2.height && b1.y + b1.height > b2.y) {
+
+                    // Simple bounce: reverse velocities
+                    b1.dx = -b1.dx;
+                    b1.dy = -b1.dy;
+                    b2.dx = -b2.dx;
+                    b2.dy = -b2.dy;
+
+                    // Optional: Resolve overlap by pushing them apart slightly
+                    const overlapX = (b1.width / 2 + b2.width / 2) - Math.abs((b1.x + b1.width / 2) - (b2.x + b2.width / 2));
+                    const overlapY = (b1.height / 2 + b2.height / 2) - Math.abs((b1.y + b1.height / 2) - (b2.y + b2.height / 2));
+
+                    if (overlapX < overlapY) { // Resolve horizontally
+                        if ((b1.x + b1.width / 2) < (b2.x + b2.width / 2)) {
+                            b1.x -= overlapX / 2;
+                            b2.x += overlapX / 2;
+                        } else {
+                            b1.x += overlapX / 2;
+                            b2.x -= overlapX / 2;
+                        }
+                    } else { // Resolve vertically
+                        if ((b1.y + b1.height / 2) < (b2.y + b2.height / 2)) {
+                            b1.y -= overlapY / 2;
+                            b2.y += overlapY / 2;
+                        } else {
+                            b1.y += overlapY / 2;
+                            b2.y -= overlapY / 2;
+                        }
+                    }
+                }
+            }
+        }
+    }}
 
 function applyPowerUp(box, powerUp) { switch (powerUp.type) { case 'HEAL': box.hp = Math.min(HP_MAX, box.hp + 50); break; case 'DAMAGE': box.powerUpTimers.DAMAGE = POWERUP_DURATION; break; case 'FIRE_RATE': box.powerUpTimers.FIRE_RATE = POWERUP_DURATION; break; } }
 
