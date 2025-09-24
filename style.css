@@ -35,7 +35,7 @@ canvas {
     font-size: 1.2em;
 }
 
-#startMenu input {
+#startMenu input, #arenaSelect {
     width: 80px;
     padding: 5px;
     font-size: 1.1em;
@@ -43,6 +43,10 @@ canvas {
     color: #ecf0f1;
     border: 1px solid #ecf0f1;
     border-radius: 5px;
+}
+
+#arenaSelect {
+    width: 180px;
 }
 
 #startButton {
