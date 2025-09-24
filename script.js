@@ -165,7 +165,8 @@ class Projectile {
     constructor(x, y, angle, team) {
         this.x = x; this.y = y;
         this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
-        this.team = team; this.color = '#f1c40f';
+        this.team = team;
+        this.color = team === 'blue' ? '#5dade2' : '#f1948a'; // Team-based colors
         this.dx = Math.cos(angle) * PROJECTILE_SPEED;
         this.dy = Math.sin(angle) * PROJECTILE_SPEED;
     }
