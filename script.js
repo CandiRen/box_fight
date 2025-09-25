@@ -465,7 +465,7 @@ function addTeamRow(color, count = 7, side = 1) {
             <option value="3">Side 3</option>
             <option value="4">Side 4</option>
         </select>
-        <button type="button" class="remove-team-btn">Remove</button>
+        <button type="button" class="remove-team-btn">&#x1F5D1;</button>
     `;
     teamRow.querySelector('.side-select').value = side;
     teamsConfigDiv.appendChild(teamRow);
