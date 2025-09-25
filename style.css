@@ -132,8 +132,9 @@ canvas {
 #teamsConfig .team-setup input[type="color"] {
     width: 40px;
     height: 30px;
-    padding: 2px;
-    border: none;
+    padding: 0; /* Remove padding which can interfere with some browser's color picker rendering */
+    border: 2px solid #ecf0f1; /* Add a visible border */
+    cursor: pointer; /* Add a pointer cursor */
 }
 #teamsConfig .team-setup input[type="number"] {
     width: 60px;
@@ -148,6 +149,16 @@ canvas {
     cursor: pointer;
 }
 #teamsConfig .team-setup .remove-team-btn:hover { background-color: #c0392b; }
+
+#teamsConfig .team-setup .side-select {
+    width: 80px;
+    background-color: #121212;
+    color: #ecf0f1;
+    border: 1px solid #ecf0f1;
+    border-radius: 3px;
+    padding: 4px;
+    font-size: 1em;
+}
 
 #addTeamButton {
     background-color: #3498db;

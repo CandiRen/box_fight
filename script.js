@@ -90,9 +90,10 @@ class PowerUp {
 }
 
 class Box {
-    constructor(x, y, teamId, color, teamName) {
+    constructor(x, y, teamId, color, teamName, side) {
         this.x = x; this.y = y; this.width = BOX_SIZE; this.height = BOX_SIZE;
         this.team = teamId; this.color = color; this.teamName = teamName; this.hp = HP_MAX;
+        this.side = side;
         this.target = null; this.fireCooldown = Math.random() * BASE_FIRE_RATE;
         const angle = Math.random() * 2 * Math.PI;
         this.dx = Math.cos(angle) * BASE_BOX_SPEED; this.dy = Math.sin(angle) * BASE_BOX_SPEED; // Initial speed
@@ -184,7 +185,7 @@ class Box {
     findTarget() {
         let closestEnemy = null, minDistance = Infinity;
         for (const otherBox of boxes) {
-            if (otherBox.team !== this.team) {
+            if (otherBox.side !== this.side) {
                 const distance = Math.hypot(this.x - otherBox.x, this.y - otherBox.y);
                 if (distance < minDistance) { minDistance = distance; closestEnemy = otherBox; }
             }
@@ -209,7 +210,8 @@ class Box {
                     this.color,
                     this.getCurrentDamage(),
                     isHomingShot,
-                    this.target // Pass the target box for homing
+                    this.target, // Pass the target box for homing
+                    this.side
                 );
                 projectiles.push(p);
             };
@@ -227,10 +229,11 @@ class Box {
 }
 
 class Projectile {
-    constructor(x, y, angle, team, teamColor, damage, isHoming = false, targetBox = null) {
+    constructor(x, y, angle, team, teamColor, damage, isHoming = false, targetBox = null, side) {
         this.x = x; this.y = y;
         this.width = PROJECTILE_SIZE; this.height = PROJECTILE_SIZE;
         this.team = team;
+        this.side = side;
         this.color = lightenColor(teamColor, 50);
         this.dx = Math.cos(angle) * PROJECTILE_SPEED;
         this.dy = Math.sin(angle) * PROJECTILE_SPEED;
@@ -276,7 +279,7 @@ function init(teams, arenaName, mode, powerUpTypesToSpawn) {
                 x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x)); y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
                 for (const obs of obstacles) { if (x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) { validPos = false; break; } }
             } while (!validPos);
-            boxes.push(new Box(x, y, team.id, team.color, team.name));
+            boxes.push(new Box(x, y, team.id, team.color, team.name, team.side));
         }
     });
     animate();
@@ -321,7 +324,7 @@ function checkCollisions() {
         const p = projectiles[i]; let projectileRemoved = false; 
         for (let j = boxes.length - 1; j >= 0; j--) { 
             const b = boxes[j]; 
-            if (p.team !== b.team && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) { 
+            if (p.side !== b.side && p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height) { 
                 b.hp -= p.damage; projectiles.splice(i, 1); projectileRemoved = true; 
                 if (b.hp <= 0) { boxes.splice(j, 1); } break; 
             } 
@@ -373,9 +376,32 @@ function applyPowerUp(box, powerUp) {
     }
 }
 
-function checkGameOver() { if (boxes.length === 0) { gameOver = true; setTimeout(() => displayWinner(null), 1000); return; } const remainingTeamIds = new Set(boxes.map(b => b.team)); if (remainingTeamIds.size <= 1) { gameOver = true; const winnerId = remainingTeamIds.values().next().value; const winner = activeTeams.find(t => t.id === winnerId); setTimeout(() => displayWinner(winner), 1000); } }
+function checkGameOver() { if (boxes.length === 0) { gameOver = true; setTimeout(() => displayWinner(null), 1000); return; } const remainingSideIds = new Set(boxes.map(b => b.side)); if (remainingSideIds.size <= 1) { gameOver = true; const winnerSideId = remainingSideIds.values().next().value; const winningTeams = activeTeams.filter(t => t.side === winnerSideId); setTimeout(() => displayWinner(winningTeams), 1000); } }
 
-function displayWinner(winner) { cancelAnimationFrame(animationFrameId); ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = 'white'; ctx.font = '60px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60); if (winner) { ctx.fillStyle = winner.color; ctx.font = '40px sans-serif'; ctx.fillText(`${winner.name} Wins!`, canvas.width / 2, canvas.height / 2); } else { ctx.fillStyle = '#ecf0f1'; ctx.font = '40px sans-serif'; ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2); } ctx.fillStyle = '#ecf0f1'; ctx.font = '20px sans-serif'; ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50); }
+function displayWinner(winner) { // winner is now winningTeams (an array) or null
+    cancelAnimationFrame(animationFrameId);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.font = '60px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 60);
+    if (winner && winner.length > 0) {
+        const winnerSideId = winner[0].side;
+        ctx.font = '40px sans-serif';
+        ctx.fillText(`Side ${winnerSideId} Wins!`, canvas.width / 2, canvas.height / 2);
+        const teamNames = winner.map(t => t.name).join(', ');
+        ctx.font = '20px sans-serif';
+        ctx.fillText(teamNames, canvas.width / 2, canvas.height / 2 + 30);
+    } else {
+        ctx.fillStyle = '#ecf0f1';
+        ctx.font = '40px sans-serif';
+        ctx.fillText('It\'s a Draw!', canvas.width / 2, canvas.height / 2);
+    }
+    ctx.fillStyle = '#ecf0f1';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Click anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 80);
+}
 
 // --- UI & Menu Management ---
 function showModeMenu() {
@@ -405,8 +431,8 @@ function showBattleSetup(mode) {
     // Setup team configuration UI
     teamsConfigDiv.innerHTML = '';
     teamIdCounter = 0;
-    addTeamRow('#3498db', 7);
-    addTeamRow('#e74c3c', 7);
+    addTeamRow('#3498db', 7, 1);
+    addTeamRow('#e74c3c', 7, 2);
 }
 
 function populatePowerUpOptions() {
@@ -424,7 +450,7 @@ function getRandomColor() {
     return color;
 }
 
-function addTeamRow(color, count = 7) {
+function addTeamRow(color, count = 7, side = 1) {
     teamIdCounter++;
     const teamRow = document.createElement('div');
     teamRow.classList.add('team-setup');
@@ -433,8 +459,15 @@ function addTeamRow(color, count = 7) {
         <input type="text" class="team-name" value="Team ${teamIdCounter}" placeholder="Nama Tim">
         <input type="color" value="${color}">
         <input type="number" value="${count}" min="1" max="50">
+        <select class="side-select">
+            <option value="1">Side 1</option>
+            <option value="2">Side 2</option>
+            <option value="3">Side 3</option>
+            <option value="4">Side 4</option>
+        </select>
         <button type="button" class="remove-team-btn">Remove</button>
     `;
+    teamRow.querySelector('.side-select').value = side;
     teamsConfigDiv.appendChild(teamRow);
 }
 
@@ -448,7 +481,8 @@ function startGame() {
         const name = row.querySelector('.team-name').value || `Team ${id}`;
         const color = row.querySelector('input[type="color"]').value;
         const count = parseInt(row.querySelector('input[type="number"]').value, 10);
-        if (count > 0) { teams.push({ id, name, color, count }); }
+        const side = parseInt(row.querySelector('.side-select').value, 10);
+        if (count > 0) { teams.push({ id, name, color, count, side }); }
     });
 
     const arenaName = arenaSelect.value;
@@ -469,7 +503,15 @@ function startGame() {
     activeTeams = teams;
     currentArenaName = arenaName;
 
-    const infoHtml = activeTeams.map(t => `<span style="color: ${t.color};">${t.count} ${t.name}</span>`).join(' <span class="vs-separator">VS</span> ');
+    const infoBySide = activeTeams.reduce((acc, team) => {
+        if (!acc[team.side]) {
+            acc[team.side] = [];
+        }
+        acc[team.side].push(`<span style="color: ${team.color};">${team.count} ${team.name}</span>`);
+        return acc;
+    }, {});
+
+    const infoHtml = Object.values(infoBySide).map(sideTeams => sideTeams.join(' + ')).join(' <span class="vs-separator">VS</span> ');
     battleInfo.innerHTML = infoHtml;
 
     battleSetupMenu.classList.add('hidden');
@@ -531,7 +573,7 @@ rematchButton.addEventListener('click', () => {
 });
 
 mainMenuButton.addEventListener('click', showModeMenu);
-addTeamButton.addEventListener('click', () => addTeamRow(getRandomColor(), 7));
+addTeamButton.addEventListener('click', () => addTeamRow(getRandomColor(), 7, 1));
 teamsConfigDiv.addEventListener('click', (e) => {
     if (e.target.classList.contains('remove-team-btn')) {
         if (teamsConfigDiv.children.length > 2) { e.target.parentElement.remove(); } 
