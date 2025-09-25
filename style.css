@@ -43,6 +43,14 @@ canvas {
     font-size: 0.8em;
 }
 
+#speedControl {
+    font-family: 'Russo One', sans-serif;
+    font-size: 1.2em;
+    color: #ecf0f1;
+    margin-bottom: 5px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
 #modeMenu, #battleSetupMenu {
     background-color: #2c3e50;
     padding: 30px 40px;

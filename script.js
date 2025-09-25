@@ -19,6 +19,8 @@ const rematchButton = document.getElementById('rematchButton');
 const mainMenuButton = document.getElementById('mainMenuButton');
 const powerUpSelection = document.getElementById('powerUpSelection');
 const powerUpOptionsDiv = powerUpSelection.querySelector('.powerup-options');
+const speedControl = document.getElementById('speedControl');
+const speedValue = document.getElementById('speedValue');
 
 // --- Game Settings ---
 const BOX_SIZE = 20;
@@ -53,7 +55,7 @@ const ARENA_LAYOUTS = {
 
 // --- Game State ---
 let boxes = [], projectiles = [], obstacles = [], powerUps = [];
-let gameOver = false, isPaused = false;
+let gameOver = false, isPaused = false, gameSpeed = 1.0;
 let teamIdCounter = 0, powerUpSpawnCounter = 0;
 let activeTeams = [], currentArenaName, currentGameMode = 'classic';
 let selectedPowerUpTypes = []; // New global for selected power-ups
@@ -122,7 +124,7 @@ class Box {
     updatePowerUps() {
         for (const type in this.powerUpTimers) {
             if (this.powerUpTimers[type] > 0) {
-                this.powerUpTimers[type]--;
+                this.powerUpTimers[type] -= gameSpeed;
             }
         }
     }
@@ -156,8 +158,8 @@ class Box {
 
     move() {
         const currentSpeedMultiplier = this.getCurrentSpeedMultiplier();
-        this.x += this.dx * currentSpeedMultiplier;
-        this.y += this.dy * currentSpeedMultiplier;
+        this.x += this.dx * currentSpeedMultiplier * gameSpeed;
+        this.y += this.dy * currentSpeedMultiplier * gameSpeed;
 
         if (this.x <= 0) { this.x = 0; this.dx = -this.dx; } 
         else if (this.x + this.width >= canvas.width) { this.x = canvas.width - this.width; this.dx = -this.dx; }
@@ -191,7 +193,7 @@ class Box {
     }
 
     shoot() {
-        this.fireCooldown--;
+        this.fireCooldown -= gameSpeed;
         if (this.target && this.fireCooldown <= 0) {
             const baseAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
             const isTripleShot = this.isTripleShotActive();
@@ -247,13 +249,13 @@ class Projectile {
             if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
             if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-            currentAngle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate);
+            currentAngle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.turnRate * gameSpeed);
 
             this.dx = Math.cos(currentAngle) * PROJECTILE_SPEED;
             this.dy = Math.sin(currentAngle) * PROJECTILE_SPEED;
         }
-        this.x += this.dx;
-        this.y += this.dy;
+        this.x += this.dx * gameSpeed;
+        this.y += this.dy * gameSpeed;
     }
 }
 
@@ -287,7 +289,7 @@ function animate() {
     drawObstacles();
     if (currentGameMode === 'powerup') {
         powerUps.forEach(p => p.draw());
-        powerUpSpawnCounter++;
+        powerUpSpawnCounter += gameSpeed;
         if (powerUpSpawnCounter >= POWERUP_SPAWN_INTERVAL) {
             spawnRandomPowerUp();
             powerUpSpawnCounter = 0;
@@ -384,6 +386,7 @@ function showModeMenu() {
     canvas.classList.add('hidden');
     battleInfo.classList.add('hidden');
     escapeMenu.classList.add('hidden');
+    speedControl.classList.add('hidden');
 }
 
 function showBattleSetup(mode) {
@@ -472,6 +475,9 @@ function startGame() {
     battleSetupMenu.classList.add('hidden');
     canvas.classList.remove('hidden');
     battleInfo.classList.remove('hidden');
+    speedControl.classList.remove('hidden');
+    gameSpeed = 1.0;
+    speedValue.textContent = '1.0x';
 
     init(teams, arenaName, currentGameMode, selectedPowerUpTypes);
 }
@@ -501,6 +507,20 @@ window.addEventListener('keydown', (e) => {
     if (battleSetupMenu.classList.contains('hidden') && modeMenu.classList.contains('hidden')) {
         if (e.code === 'Space') { e.preventDefault(); if (!gameOver) { togglePause(); } }
         if (e.code === 'Escape') { e.preventDefault(); if (!gameOver) { togglePause(true); } }
+        if (e.code === 'ArrowRight') {
+            e.preventDefault();
+            if (!isPaused) {
+                gameSpeed = Math.min(gameSpeed + 0.1, 5.0); // Max speed 5x
+                speedValue.textContent = `${gameSpeed.toFixed(1)}x`;
+            }
+        }
+        if (e.code === 'ArrowLeft') {
+            e.preventDefault();
+            if (!isPaused) {
+                gameSpeed = Math.max(gameSpeed - 0.1, 0.1); // Min speed 0.1x
+                speedValue.textContent = `${gameSpeed.toFixed(1)}x`;
+            }
+        }
     }
 });
 
