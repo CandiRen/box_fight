@@ -7,6 +7,7 @@ const ctx = canvas.getContext('2d');
 const modeMenu = document.getElementById('modeMenu');
 const classicModeButton = document.getElementById('classicModeButton');
 const powerupModeButton = document.getElementById('powerupModeButton');
+const superTeamModeButton = document.getElementById('superTeamModeButton');
 const battleSetupMenu = document.getElementById('battleSetupMenu');
 const teamsConfigDiv = document.getElementById('teamsConfig');
 const addTeamButton = document.getElementById('addTeamButton');
@@ -41,6 +42,12 @@ const POWERUP_TYPES = {
     HOMING_SHOT: { color: '#f1c40f', symbol: 'H' },
     SPEED_BOOST: { color: '#9b59b6', symbol: 'S' },
     TRIPLE_SHOT: { color: '#1abc9c', symbol: 'T' }
+};
+
+const SUPER_POWERS = {
+    TANK: { name: 'Tank', description: '+50% HP, -15% Damage' },
+    GLASS_CANNON: { name: 'Glass Cannon', description: '+50% Damage, -25% HP' },
+    REGENERATOR: { name: 'Regenerator', description: 'Regenerates 0.1% HP per frame' }
 };
 
 // --- Arena Layouts ---
@@ -90,10 +97,32 @@ class PowerUp {
 }
 
 class Box {
-    constructor(x, y, teamId, color, teamName, side) {
+    constructor(x, y, teamId, color, teamName, side, specialAbility = null) {
         this.x = x; this.y = y; this.width = BOX_SIZE; this.height = BOX_SIZE;
-        this.team = teamId; this.color = color; this.teamName = teamName; this.hp = HP_MAX;
+        this.team = teamId; this.color = color; this.teamName = teamName; 
         this.side = side;
+        this.specialAbility = specialAbility;
+        this.hp = HP_MAX;
+        this.projectileDamage = BASE_PROJECTILE_DAMAGE;
+
+        // Apply super power effects
+        if (this.specialAbility) {
+            switch (this.specialAbility) {
+                case 'TANK':
+                    this.hp *= 1.5;
+                    this.projectileDamage *= 0.85;
+                    break;
+                case 'GLASS_CANNON':
+                    this.hp *= 0.75;
+                    this.projectileDamage *= 1.5;
+                    break;
+                case 'REGENERATOR':
+                    // No initial stat change
+                    break;
+            }
+        }
+
+
         this.target = null; this.fireCooldown = Math.random() * BASE_FIRE_RATE;
         const angle = Math.random() * 2 * Math.PI;
         this.dx = Math.cos(angle) * BASE_BOX_SPEED; this.dy = Math.sin(angle) * BASE_BOX_SPEED; // Initial speed
@@ -103,7 +132,11 @@ class Box {
     }
 
     getCurrentDamage() {
-        return this.powerUpTimers.DAMAGE > 0 ? BASE_PROJECTILE_DAMAGE * 1.5 : BASE_PROJECTILE_DAMAGE;
+        let damage = this.projectileDamage;
+        if (this.powerUpTimers.DAMAGE > 0) {
+            damage *= 1.5;
+        }
+        return damage;
     }
 
     getCurrentFireRate() {
@@ -155,6 +188,11 @@ class Box {
         this.findTarget();
         this.shoot();
         if(currentGameMode === 'powerup') this.updatePowerUps();
+
+        if (this.specialAbility === 'REGENERATOR' && this.hp < HP_MAX) {
+            this.hp += 0.001 * HP_MAX * gameSpeed;
+            this.hp = Math.min(this.hp, HP_MAX);
+        }
     }
 
     move() {
@@ -279,7 +317,7 @@ function init(teams, arenaName, mode, powerUpTypesToSpawn) {
                 x = Math.max(BOX_SIZE, Math.min(canvas.width - BOX_SIZE, x)); y = Math.max(BOX_SIZE, Math.min(canvas.height - BOX_SIZE, y));
                 for (const obs of obstacles) { if (x < obs.x + obs.width && x + BOX_SIZE > obs.x && y < obs.y + obs.height && y + BOX_SIZE > obs.y) { validPos = false; break; } }
             } while (!validPos);
-            boxes.push(new Box(x, y, team.id, team.color, team.name, team.side));
+            boxes.push(new Box(x, y, team.id, team.color, team.name, team.side, team.specialAbility));
         }
     });
     animate();
@@ -433,6 +471,12 @@ function showBattleSetup(mode) {
     teamIdCounter = 0;
     addTeamRow('#3498db', 7, 1);
     addTeamRow('#e74c3c', 7, 2);
+
+    // Show/hide super power dropdowns
+    const superPowerDropdowns = teamsConfigDiv.querySelectorAll('.super-power-select');
+    superPowerDropdowns.forEach(dropdown => {
+        dropdown.style.display = mode === 'superteam' ? 'block' : 'none';
+    });
 }
 
 function populatePowerUpOptions() {
@@ -455,6 +499,24 @@ function addTeamRow(color, count = 7, side = 1) {
     const teamRow = document.createElement('div');
     teamRow.classList.add('team-setup');
     teamRow.setAttribute('data-team-id', teamIdCounter);
+
+    // Create super power dropdown
+    const superPowerSelect = document.createElement('select');
+    superPowerSelect.classList.add('super-power-select');
+    superPowerSelect.style.display = currentGameMode === 'superteam' ? 'block' : 'none'; // Hide by default
+    
+    const defaultOption = document.createElement('option');
+    defaultOption.value = 'NONE';
+    defaultOption.textContent = 'No Power';
+    superPowerSelect.appendChild(defaultOption);
+
+    for (const key in SUPER_POWERS) {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = SUPER_POWERS[key].name;
+        superPowerSelect.appendChild(option);
+    }
+
     teamRow.innerHTML = `
         <input type="text" class="team-name" value="Team ${teamIdCounter}" placeholder="Nama Tim">
         <input type="color" value="${color}">
@@ -465,8 +527,16 @@ function addTeamRow(color, count = 7, side = 1) {
             <option value="3">Side 3</option>
             <option value="4">Side 4</option>
         </select>
-        <button type="button" class="remove-team-btn">&#x1F5D1;</button>
     `;
+    teamRow.appendChild(superPowerSelect); // Add dropdown to the row
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.classList.add('remove-team-btn');
+    removeBtn.innerHTML = '&#x1F5D1;';
+    teamRow.appendChild(removeBtn);
+
+
     teamRow.querySelector('.side-select').value = side;
     teamsConfigDiv.appendChild(teamRow);
 }
@@ -482,7 +552,12 @@ function startGame() {
         const color = row.querySelector('input[type="color"]').value;
         const count = parseInt(row.querySelector('input[type="number"]').value, 10);
         const side = parseInt(row.querySelector('.side-select').value, 10);
-        if (count > 0) { teams.push({ id, name, color, count, side }); }
+        let specialAbility = null;
+        if (currentGameMode === 'superteam') {
+            specialAbility = row.querySelector('.super-power-select').value;
+            if (specialAbility === 'NONE') specialAbility = null;
+        }
+        if (count > 0) { teams.push({ id, name, color, count, side, specialAbility }); }
     });
 
     const arenaName = arenaSelect.value;
@@ -541,6 +616,7 @@ function togglePause(force) {
 // --- Event Listeners ---
 classicModeButton.addEventListener('click', () => showBattleSetup('classic'));
 powerupModeButton.addEventListener('click', () => showBattleSetup('powerup'));
+superTeamModeButton.addEventListener('click', () => showBattleSetup('superteam'));
 backToModeSelectButton.addEventListener('click', showModeMenu);
 startButton.addEventListener('click', startGame);
 canvas.addEventListener('click', () => { if (gameOver) { showModeMenu(); } });

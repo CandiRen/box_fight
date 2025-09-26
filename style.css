@@ -158,7 +158,7 @@ canvas {
 
 .team-setup {
     display: grid;
-    grid-template-columns: 1fr 35px 55px 120px 35px;
+    grid-template-columns: 1fr 35px 55px 120px 120px 35px;
     gap: 8px;
     align-items: center;
     margin: 10px 0;
