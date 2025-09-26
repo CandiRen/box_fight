@@ -22,6 +22,47 @@ const powerUpSelection = document.getElementById('powerUpSelection');
 const powerUpOptionsDiv = powerUpSelection.querySelector('.powerup-options');
 const speedControl = document.getElementById('speedControl');
 const speedValue = document.getElementById('speedValue');
+const infoPanel = document.getElementById('infoPanel');
+const infoPanelTitle = document.getElementById('infoPanelTitle');
+const infoPanelContent = document.getElementById('infoPanelContent');
+const infoPanelClose = document.getElementById('infoPanelClose');
+
+const INFO_CONTENT = {
+    modes: {
+        title: 'Game Modes',
+        content: `
+            <strong>Classic:</strong> A pure simulation of box warfare. No frills, just fighting.<br><br>
+            <strong>Power-up:</strong> Power-ups spawn randomly on the map, granting temporary advantages to the box that collects them.<br><br>
+            <strong>Super Team:</strong> Each team gets a unique, permanent specialization. Choose wisely!`
+    },
+    teams: {
+        title: 'Team Specializations',
+        content: `This is only active in <strong>Super Team</strong> mode.<br><br>
+            <strong>Tank:</strong> +50% HP, -15% Damage. Built to last.<br><br>
+            <strong>Glass Cannon:</strong> +50% Damage, -25% HP. Hits hard, but is fragile.<br><br>
+            <strong>Regenerator:</strong> Slowly regenerates health over time.`
+    },
+    arenas: {
+        title: 'Arenas',
+        content: `Each arena offers a different tactical challenge.<br><br>
+            <strong>Kosong:</strong> An empty field, a pure test of strength.<br><br>
+            <strong>Pilar Tengah:</strong> A large central pillar to navigate around.<br><br>
+            <strong>Labirin Sederhana:</strong> Two long walls that create distinct corridors.<br><br>
+            <strong>Benteng:</strong> Four small pillars creating a defensive structure.<br><br>
+            <strong>Dua Pilar:</strong> Two pillars that divide the battlefield.<br><br>
+            <strong>Medan Asteroid:</strong> A scattered field of small obstacles.`
+    },
+    powerups: {
+        title: 'Power-ups',
+        content: `These items grant temporary boosts.<br><br>
+            <strong>[+] Heal:</strong> Instantly restores a portion of health.<br><br>
+            <strong>[D] Damage:</strong> Increases projectile damage.<br><br>
+            <strong>[F] Fire Rate:</strong> Increases shooting speed.<br><br>
+            <strong>[H] Homing Shot:</strong> Projectiles will track their target.<br><br>
+            <strong>[S] Speed Boost:</strong> Increases movement speed.<br><br>
+            <strong>[T] Triple Shot:</strong> Fires three projectiles at once.`
+    }
+};
 
 // --- Game Settings ---
 const BOX_SIZE = 20;
@@ -657,6 +698,29 @@ teamsConfigDiv.addEventListener('click', (e) => {
         else { alert("You need at least two teams to start a battle."); }
     }
 });
+
+window.addEventListener('click', (e) => {
+    if (e.target.classList.contains('info-icon')) {
+        const infoKey = e.target.getAttribute('data-info');
+        if (INFO_CONTENT[infoKey]) {
+            const { title, content } = INFO_CONTENT[infoKey];
+            showInfoPanel(title, content);
+        }
+    }
+});
+
+infoPanelClose.addEventListener('click', () => hideInfoPanel());
+
+function showInfoPanel(title, content) {
+    infoPanelTitle.textContent = title;
+    infoPanelContent.innerHTML = content;
+    infoPanel.classList.remove('hidden');
+}
+
+function hideInfoPanel() {
+    infoPanel.classList.add('hidden');
+}
+
 
 // --- Initial Setup ---
 showModeMenu();
