@@ -102,18 +102,18 @@ class Box {
         this.team = teamId; this.color = color; this.teamName = teamName; 
         this.side = side;
         this.specialAbility = specialAbility;
-        this.hp = HP_MAX;
+        this.maxHp = HP_MAX;
         this.projectileDamage = BASE_PROJECTILE_DAMAGE;
 
         // Apply super power effects
         if (this.specialAbility) {
             switch (this.specialAbility) {
                 case 'TANK':
-                    this.hp *= 1.5;
+                    this.maxHp *= 1.5;
                     this.projectileDamage *= 0.85;
                     break;
                 case 'GLASS_CANNON':
-                    this.hp *= 0.75;
+                    this.maxHp *= 0.75;
                     this.projectileDamage *= 1.5;
                     break;
                 case 'REGENERATOR':
@@ -121,6 +121,7 @@ class Box {
                     break;
             }
         }
+        this.hp = this.maxHp;
 
 
         this.target = null; this.fireCooldown = Math.random() * BASE_FIRE_RATE;
@@ -176,7 +177,7 @@ class Box {
         ctx.strokeRect(this.x, this.y, this.width, this.height);
         ctx.lineWidth = 1;
 
-        const hpBarWidth = (this.hp / HP_MAX) * this.width;
+        const hpBarWidth = (this.hp / this.maxHp) * this.width;
         ctx.fillStyle = '#2ecc71';
         ctx.fillRect(this.x, this.y - 7, hpBarWidth, 5);
         ctx.strokeStyle = '#ecf0f1';
@@ -189,9 +190,9 @@ class Box {
         this.shoot();
         if(currentGameMode === 'powerup') this.updatePowerUps();
 
-        if (this.specialAbility === 'REGENERATOR' && this.hp < HP_MAX) {
-            this.hp += 0.001 * HP_MAX * gameSpeed;
-            this.hp = Math.min(this.hp, HP_MAX);
+        if (this.specialAbility === 'REGENERATOR' && this.hp < this.maxHp) {
+            this.hp += 0.001 * this.maxHp * gameSpeed;
+            this.hp = Math.min(this.hp, this.maxHp);
         }
     }
 
@@ -385,12 +386,12 @@ function checkCollisions() {
             } 
         } 
     } 
-    // Box to Box collisions (only if HP < 100)
+    // Box to Box collisions (only if HP < maxHp)
     for (let i = 0; i < boxes.length; i++) {
         const b1 = boxes[i];
         for (let j = i + 1; j < boxes.length; j++) { // Avoid self-collision and duplicate checks
             const b2 = boxes[j];
-            if (b1.hp < HP_MAX && b2.hp < HP_MAX) {
+            if (b1.hp < b1.maxHp && b2.hp < b2.maxHp) {
                 if (b1.x < b2.x + b2.width && b1.x + b1.width > b2.x && b1.y < b2.y + b2.height && b1.y + b1.height > b2.y) {
                     b1.dx = -b1.dx; b1.dy = -b1.dy; b2.dx = -b2.dx; b2.dy = -b2.dy;
                     const overlapX = (b1.width / 2 + b2.width / 2) - Math.abs((b1.x + b1.width / 2) - (b2.x + b2.width / 2));
@@ -405,7 +406,7 @@ function checkCollisions() {
 
 function applyPowerUp(box, powerUp) { 
     switch (powerUp.type) {
-        case 'HEAL': box.hp = Math.min(HP_MAX, box.hp + 50); break;
+        case 'HEAL': box.hp = Math.min(box.maxHp, box.hp + 50); break;
         case 'DAMAGE': box.powerUpTimers.DAMAGE = POWERUP_DURATION; break;
         case 'FIRE_RATE': box.powerUpTimers.FIRE_RATE = POWERUP_DURATION; break;
         case 'HOMING_SHOT': box.powerUpTimers.HOMING_SHOT = POWERUP_DURATION; break;
