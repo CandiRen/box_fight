@@ -40,7 +40,12 @@ const INFO_CONTENT = {
         content: `This is only active in <strong>Super Team</strong> mode.<br><br>
             <strong>Tank:</strong> +50% HP, -15% Damage. Built to last.<br><br>
             <strong>Glass Cannon:</strong> +50% Damage, -25% HP. Hits hard, but is fragile.<br><br>
-            <strong>Regenerator:</strong> Slowly regenerates health over time.`
+            <strong>Regenerator:</strong> Slowly regenerates health over time.<br><br>
+            <strong>Berserker:</strong> +25% Damage, +25% Speed, -20% HP. Loves the rush.<br><br>
+            <strong>Sprinter:</strong> +50% Speed, -25% Damage. Outruns the opponents.<br><br>
+            <strong>Bulwark:</strong> +75% HP, -20% Speed, -5% Damage. Nigh unbreakable.<br><br>
+            <strong>Rapid Fire:</strong> Shoots 30% faster, -15% Damage. Keeps the pressure on.<br><br>
+            <strong>Homing Specialist:</strong> Shots always home, -15% Damage, shoots 10% slower. Relentless hunter.`
     },
     arenas: {
         title: 'Arenas',
@@ -88,7 +93,12 @@ const POWERUP_TYPES = {
 const SUPER_POWERS = {
     TANK: { name: 'Tank', description: '+50% HP, -15% Damage' },
     GLASS_CANNON: { name: 'Glass Cannon', description: '+50% Damage, -25% HP' },
-    REGENERATOR: { name: 'Regenerator', description: 'Regenerates 0.1% HP per frame' }
+    REGENERATOR: { name: 'Regenerator', description: 'Regenerates 0.1% HP per frame' },
+    BERSERKER: { name: 'Berserker', description: '+25% Damage, +25% Speed, -20% HP' },
+    SPRINTER: { name: 'Sprinter', description: '+50% Speed, -25% Damage' },
+    BULWARK: { name: 'Bulwark', description: '+75% HP, -20% Speed, -5% Damage' },
+    RAPID_FIRE: { name: 'Rapid Fire', description: 'Shoots 30% faster, -15% Damage' },
+    HOMING_SPECIALIST: { name: 'Homing Specialist', description: 'Shots always home, -15% Damage, shoots 10% slower' }
 };
 
 // --- Arena Layouts ---
@@ -145,6 +155,9 @@ class Box {
         this.specialAbility = specialAbility;
         this.maxHp = HP_MAX;
         this.projectileDamage = BASE_PROJECTILE_DAMAGE;
+        this.speedMultiplier = 1;
+        this.fireRateMultiplier = 1;
+        this.alwaysHoming = false;
 
         // Apply super power effects
         if (this.specialAbility) {
@@ -160,17 +173,40 @@ class Box {
                 case 'REGENERATOR':
                     // No initial stat change
                     break;
+                case 'BERSERKER':
+                    this.maxHp *= 0.8;
+                    this.projectileDamage *= 1.25;
+                    this.speedMultiplier *= 1.25;
+                    break;
+                case 'SPRINTER':
+                    this.projectileDamage *= 0.75;
+                    this.speedMultiplier *= 1.5;
+                    break;
+                case 'BULWARK':
+                    this.maxHp *= 1.75;
+                    this.projectileDamage *= 0.95;
+                    this.speedMultiplier *= 0.8;
+                    break;
+                case 'RAPID_FIRE':
+                    this.projectileDamage *= 0.85;
+                    this.fireRateMultiplier *= 0.7;
+                    break;
+                case 'HOMING_SPECIALIST':
+                    this.projectileDamage *= 0.85;
+                    this.fireRateMultiplier *= 1.1;
+                    this.alwaysHoming = true;
+                    break;
             }
         }
         this.hp = this.maxHp;
 
-
-        this.target = null; this.fireCooldown = Math.random() * BASE_FIRE_RATE;
+        this.powerUpTimers = {};
+        this.target = null; this.fireCooldown = Math.random() * this.getCurrentFireRate();
         const angle = Math.random() * 2 * Math.PI;
         this.dx = Math.cos(angle) * BASE_BOX_SPEED; this.dy = Math.sin(angle) * BASE_BOX_SPEED; // Initial speed
 
         // Power-up related stats
-        this.powerUpTimers = {}; // e.g., { DAMAGE: 300, FIRE_RATE: 300, HOMING_SHOT: 300, SPEED_BOOST: 300, TRIPLE_SHOT: 300 }
+        // e.g., { DAMAGE: 300, FIRE_RATE: 300, HOMING_SHOT: 300, SPEED_BOOST: 300, TRIPLE_SHOT: 300 }
     }
 
     getCurrentDamage() {
@@ -182,15 +218,17 @@ class Box {
     }
 
     getCurrentFireRate() {
-        return this.powerUpTimers.FIRE_RATE > 0 ? BASE_FIRE_RATE / 2 : BASE_FIRE_RATE;
+        const baseRate = this.powerUpTimers.FIRE_RATE > 0 ? BASE_FIRE_RATE / 2 : BASE_FIRE_RATE;
+        return baseRate * this.fireRateMultiplier;
     }
 
     getCurrentSpeedMultiplier() {
-        return this.powerUpTimers.SPEED_BOOST > 0 ? 1.5 : 1;
+        const boost = this.powerUpTimers.SPEED_BOOST > 0 ? 1.5 : 1;
+        return boost * this.speedMultiplier;
     }
 
     isHomingShotActive() {
-        return this.powerUpTimers.HOMING_SHOT > 0;
+        return this.powerUpTimers.HOMING_SHOT > 0 || this.alwaysHoming;
     }
 
     isTripleShotActive() {
