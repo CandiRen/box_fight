@@ -35,6 +35,7 @@
                 <option value="two_pillars">Dua Pilar</option>
                 <option value="asteroid_field">Medan Asteroid</option>
             </select>
+            <button id="openCustomArenaBuilderButton" type="button" class="btn btn-tertiary slim-btn">Buat Custom Arena</button>
         </div>
 
         <div id="powerUpSelection" class="hidden form-group">
@@ -69,6 +70,22 @@
         <h3 id="infoPanelTitle"></h3>
         <p id="infoPanelContent"></p>
         <button id="infoPanelClose" class="btn btn-tertiary">Close</button>
+    </div>
+
+    <div id="customArenaBuilder" class="hidden menu-panel builder-panel">
+        <h2>Buat Arena Custom</h2>
+        <p class="builder-instructions">Klik dan drag pada kanvas untuk membuat rintangan baru. Simpan untuk menambahkannya ke daftar arena.</p>
+        <div class="form-group">
+            <label for="customArenaName">Nama Arena</label>
+            <input type="text" id="customArenaName" placeholder="Contoh: Labirin Keren">
+        </div>
+        <canvas id="arenaBuilderCanvas" width="800" height="600"></canvas>
+        <div class="builder-actions">
+            <button id="clearBuilderObstacles" type="button" class="btn btn-tertiary">Reset Rintangan</button>
+            <button id="saveCustomArenaButton" type="button" class="btn btn-primary">Simpan Arena</button>
+            <button id="closeCustomArenaBuilder" type="button" class="btn btn-danger">Kembali</button>
+        </div>
+        <div id="builderObstacleList" class="builder-obstacle-list"></div>
     </div>
     
     <script src="script.js"></script>

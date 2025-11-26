@@ -26,6 +26,15 @@ const infoPanel = document.getElementById('infoPanel');
 const infoPanelTitle = document.getElementById('infoPanelTitle');
 const infoPanelContent = document.getElementById('infoPanelContent');
 const infoPanelClose = document.getElementById('infoPanelClose');
+const openCustomArenaBuilderButton = document.getElementById('openCustomArenaBuilderButton');
+const customArenaBuilder = document.getElementById('customArenaBuilder');
+const customArenaNameInput = document.getElementById('customArenaName');
+const arenaBuilderCanvas = document.getElementById('arenaBuilderCanvas');
+const builderObstacleList = document.getElementById('builderObstacleList');
+const saveCustomArenaButton = document.getElementById('saveCustomArenaButton');
+const closeCustomArenaBuilderButton = document.getElementById('closeCustomArenaBuilder');
+const clearBuilderObstaclesButton = document.getElementById('clearBuilderObstacles');
+const builderCtx = arenaBuilderCanvas ? arenaBuilderCanvas.getContext('2d') : null;
 const recordingControls = document.getElementById('recordingControls');
 const toggleRecordingButton = document.getElementById('toggleRecordingButton');
 const recordingIndicator = document.getElementById('recordingIndicator');
@@ -95,6 +104,8 @@ const POWERUP_TYPES = {
     TRIPLE_SHOT: { color: '#1abc9c', symbol: 'T' }
 };
 
+const CUSTOM_ARENA_STORAGE_KEY = 'boxFightCustomArenas';
+
 const SUPER_POWERS = {
     TANK: { name: 'Tank', description: '+50% HP, -15% Damage' },
     GLASS_CANNON: { name: 'Glass Cannon', description: '+50% Damage, -25% HP' },
@@ -126,6 +137,10 @@ let animationFrameId;
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecordingHighQuality = false;
+let savedCustomArenas = [];
+let builderObstacles = [];
+let isDrawingBuilderRect = false;
+let builderDragStart = null;
 
 // --- Utility ---
 function lightenColor(hex, percent) {
@@ -227,6 +242,235 @@ function stopHighQualityRecording() {
     } else {
         setRecordingUI(false);
     }
+}
+
+// --- Custom Arena Builder ---
+function drawBuilderScene(tempRect) {
+    if (!builderCtx || !arenaBuilderCanvas) return;
+    const { width, height } = arenaBuilderCanvas;
+    builderCtx.clearRect(0, 0, width, height);
+    builderCtx.fillStyle = '#050d1f';
+    builderCtx.fillRect(0, 0, width, height);
+
+    builderCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+    builderCtx.lineWidth = 1;
+    for (let x = 0; x <= width; x += 40) {
+        builderCtx.beginPath();
+        builderCtx.moveTo(x, 0);
+        builderCtx.lineTo(x, height);
+        builderCtx.stroke();
+    }
+    for (let y = 0; y <= height; y += 40) {
+        builderCtx.beginPath();
+        builderCtx.moveTo(0, y);
+        builderCtx.lineTo(width, y);
+        builderCtx.stroke();
+    }
+
+    builderCtx.fillStyle = '#95a5a6';
+    builderObstacles.forEach(obs => {
+        builderCtx.fillRect(obs.x, obs.y, obs.width, obs.height);
+    });
+
+    if (tempRect) {
+        builderCtx.fillStyle = 'rgba(231, 76, 60, 0.6)';
+        builderCtx.fillRect(tempRect.x, tempRect.y, tempRect.width, tempRect.height);
+    }
+}
+
+function renderBuilderObstacleList() {
+    if (!builderObstacleList) return;
+    if (builderObstacles.length === 0) {
+        builderObstacleList.innerHTML = '<p style="color: #95a5a6;">Belum ada rintangan. Drag pada kanvas untuk membuatnya.</p>';
+        return;
+    }
+    const ul = document.createElement('ul');
+    builderObstacles.forEach((obs, index) => {
+        const li = document.createElement('li');
+        const info = document.createElement('span');
+        info.textContent = `${index + 1}. x:${Math.round(obs.x)} y:${Math.round(obs.y)} w:${Math.round(obs.width)} h:${Math.round(obs.height)}`;
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = 'Hapus';
+        removeBtn.addEventListener('click', () => {
+            builderObstacles.splice(index, 1);
+            drawBuilderScene();
+            renderBuilderObstacleList();
+        });
+        li.appendChild(info);
+        li.appendChild(removeBtn);
+        ul.appendChild(li);
+    });
+    builderObstacleList.innerHTML = '';
+    builderObstacleList.appendChild(ul);
+}
+
+function getBuilderCanvasCoords(event) {
+    if (!arenaBuilderCanvas) return { x: 0, y: 0 };
+    const rect = arenaBuilderCanvas.getBoundingClientRect();
+    const scaleX = arenaBuilderCanvas.width / rect.width;
+    const scaleY = arenaBuilderCanvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+    return {
+        x: Math.max(0, Math.min(arenaBuilderCanvas.width, x)),
+        y: Math.max(0, Math.min(arenaBuilderCanvas.height, y))
+    };
+}
+
+function finalizeBuilderRect(start, end) {
+    if (!start || !end) return null;
+    const width = Math.abs(end.x - start.x);
+    const height = Math.abs(end.y - start.y);
+    if (width < 5 || height < 5) return null;
+    return {
+        x: Math.min(start.x, end.x),
+        y: Math.min(start.y, end.y),
+        width,
+        height
+    };
+}
+
+function clearBuilderObstacles() {
+    builderObstacles = [];
+    drawBuilderScene();
+    renderBuilderObstacleList();
+}
+
+function appendCustomArenaOption(arena) {
+    if (!arenaSelect || !arena || !arena.id) return;
+    let option = arenaSelect.querySelector(`option[value="${arena.id}"]`);
+    if (!option) {
+        option = document.createElement('option');
+        option.value = arena.id;
+        option.dataset.custom = 'true';
+        arenaSelect.appendChild(option);
+    }
+    option.textContent = `Custom: ${arena.name}`;
+}
+
+function registerCustomArena(arena) {
+    if (!arena || !arena.id || !Array.isArray(arena.obstacles)) return;
+    ARENA_LAYOUTS[arena.id] = arena.obstacles.map(obs => ({ ...obs }));
+}
+
+function persistCustomArenas() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+        localStorage.setItem(CUSTOM_ARENA_STORAGE_KEY, JSON.stringify(savedCustomArenas));
+    } catch (err) {
+        console.warn('Gagal menyimpan arena custom ke storage.', err);
+    }
+}
+
+function loadCustomArenasFromStorage() {
+    if (typeof localStorage === 'undefined') return;
+    let stored = [];
+    try {
+        const raw = localStorage.getItem(CUSTOM_ARENA_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                stored = parsed;
+            }
+        }
+    } catch (err) {
+        console.warn('Gagal membaca arena custom.', err);
+    }
+    savedCustomArenas = stored;
+    if (arenaSelect) {
+        arenaSelect.querySelectorAll('option[data-custom="true"]').forEach(opt => opt.remove());
+    }
+    savedCustomArenas.forEach(arena => {
+        registerCustomArena(arena);
+        appendCustomArenaOption(arena);
+    });
+}
+
+function saveCurrentBuilderArena() {
+    if (!customArenaNameInput) return;
+    const name = customArenaNameInput.value.trim();
+    if (!name) {
+        alert('Masukkan nama arena terlebih dahulu.');
+        return;
+    }
+    if (builderObstacles.length === 0) {
+        alert('Tambahkan minimal satu rintangan.');
+        return;
+    }
+    const sanitizedBase = `custom_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'arena'}`;
+    let uniqueId = sanitizedBase;
+    let counter = 1;
+    while (ARENA_LAYOUTS[uniqueId]) {
+        uniqueId = `${sanitizedBase}_${counter++}`;
+    }
+    const normalizedObstacles = builderObstacles.map(obs => ({
+        x: Math.round(obs.x),
+        y: Math.round(obs.y),
+        width: Math.round(obs.width),
+        height: Math.round(obs.height)
+    }));
+    const arenaData = { id: uniqueId, name, obstacles: normalizedObstacles };
+    savedCustomArenas.push(arenaData);
+    persistCustomArenas();
+    registerCustomArena(arenaData);
+    appendCustomArenaOption(arenaData);
+    if (arenaSelect) {
+        arenaSelect.value = uniqueId;
+    }
+    alert('Arena custom berhasil disimpan!');
+    hideCustomArenaBuilder();
+}
+
+function showCustomArenaBuilder() {
+    if (!customArenaBuilder) return;
+    battleSetupMenu.classList.add('hidden');
+    customArenaBuilder.classList.remove('hidden');
+    drawBuilderScene();
+    renderBuilderObstacleList();
+}
+
+function hideCustomArenaBuilder() {
+    if (!customArenaBuilder) return;
+    customArenaBuilder.classList.add('hidden');
+    battleSetupMenu.classList.remove('hidden');
+}
+
+function startBuilderDraw(event) {
+    if (!arenaBuilderCanvas) return;
+    if (event.button !== undefined && event.button !== 0) return;
+    isDrawingBuilderRect = true;
+    builderDragStart = getBuilderCanvasCoords(event);
+    drawBuilderScene();
+}
+
+function updateBuilderDraw(event) {
+    if (!isDrawingBuilderRect) return;
+    const current = getBuilderCanvasCoords(event);
+    const previewRect = finalizeBuilderRect(builderDragStart, current);
+    drawBuilderScene(previewRect);
+}
+
+function endBuilderDraw(event) {
+    if (!isDrawingBuilderRect) return;
+    isDrawingBuilderRect = false;
+    const endPoint = getBuilderCanvasCoords(event);
+    const newRect = finalizeBuilderRect(builderDragStart, endPoint);
+    builderDragStart = null;
+    if (newRect) {
+        builderObstacles.push(newRect);
+        drawBuilderScene();
+        renderBuilderObstacleList();
+    } else {
+        drawBuilderScene();
+    }
+}
+
+function cancelBuilderDraw() {
+    if (!isDrawingBuilderRect) return;
+    isDrawingBuilderRect = false;
+    builderDragStart = null;
+    drawBuilderScene();
 }
 
 // --- Classes ---
@@ -485,7 +729,8 @@ function init(teams, arenaName, mode, powerUpTypesToSpawn) {
     currentArenaName = arenaName; currentGameMode = mode; gameOver = false;
     boxes = []; projectiles = []; powerUps = []; powerUpSpawnCounter = 0;
     selectedPowerUpTypes = powerUpTypesToSpawn; // Store selected power-ups
-    obstacles = ARENA_LAYOUTS[arenaName].map(o => ({ ...o }));
+    const layout = Array.isArray(ARENA_LAYOUTS[arenaName]) ? ARENA_LAYOUTS[arenaName] : [];
+    obstacles = layout.map(o => ({ ...o }));
     const teamCount = teams.length, angleIncrement = (2 * Math.PI) / teamCount, spawnRadius = Math.min(canvas.width, canvas.height) / 3;
     teams.forEach((team, index) => {
         const angle = index * angleIncrement, spawnCenterX = canvas.width / 2 + spawnRadius * Math.cos(angle), spawnCenterY = canvas.height / 2 + spawnRadius * Math.sin(angle), spawnArea = 100;
@@ -627,6 +872,9 @@ function showModeMenu() {
     isPaused = false;
     modeMenu.classList.remove('hidden');
     battleSetupMenu.classList.add('hidden');
+    if (customArenaBuilder) {
+        customArenaBuilder.classList.add('hidden');
+    }
     canvas.classList.add('hidden');
     battleInfo.classList.add('hidden');
     escapeMenu.classList.add('hidden');
@@ -645,6 +893,9 @@ function showBattleSetup(mode) {
     currentGameMode = mode;
     modeMenu.classList.add('hidden');
     battleSetupMenu.classList.remove('hidden');
+    if (customArenaBuilder) {
+        customArenaBuilder.classList.add('hidden');
+    }
     
     // Show/hide power-up selection based on mode
     if (mode === 'powerup') {
@@ -850,6 +1101,17 @@ if (toggleRecordingButton) {
         }
     });
 }
+if (openCustomArenaBuilderButton) { openCustomArenaBuilderButton.addEventListener('click', showCustomArenaBuilder); }
+if (closeCustomArenaBuilderButton) { closeCustomArenaBuilderButton.addEventListener('click', hideCustomArenaBuilder); }
+if (clearBuilderObstaclesButton) { clearBuilderObstaclesButton.addEventListener('click', clearBuilderObstacles); }
+if (saveCustomArenaButton) { saveCustomArenaButton.addEventListener('click', saveCurrentBuilderArena); }
+if (arenaBuilderCanvas) {
+    arenaBuilderCanvas.addEventListener('pointerdown', startBuilderDraw);
+    arenaBuilderCanvas.addEventListener('pointermove', updateBuilderDraw);
+    arenaBuilderCanvas.addEventListener('pointerup', endBuilderDraw);
+    arenaBuilderCanvas.addEventListener('pointerleave', cancelBuilderDraw);
+    arenaBuilderCanvas.addEventListener('pointercancel', cancelBuilderDraw);
+}
 addTeamButton.addEventListener('click', () => addTeamRow(getRandomColor(), 7, 1));
 teamsConfigDiv.addEventListener('click', (e) => {
     if (e.target.classList.contains('remove-team-btn')) {
@@ -882,4 +1144,5 @@ function hideInfoPanel() {
 
 
 // --- Initial Setup ---
+loadCustomArenasFromStorage();
 showModeMenu();
