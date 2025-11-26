@@ -26,6 +26,9 @@ const infoPanel = document.getElementById('infoPanel');
 const infoPanelTitle = document.getElementById('infoPanelTitle');
 const infoPanelContent = document.getElementById('infoPanelContent');
 const infoPanelClose = document.getElementById('infoPanelClose');
+const recordingControls = document.getElementById('recordingControls');
+const toggleRecordingButton = document.getElementById('toggleRecordingButton');
+const recordingIndicator = document.getElementById('recordingIndicator');
 
 const INFO_CONTENT = {
     modes: {
@@ -77,6 +80,8 @@ const PROJECTILE_SPEED = 4;
 const PROJECTILE_SIZE = 5;
 const BASE_PROJECTILE_DAMAGE = 10;
 const BASE_FIRE_RATE = 60; // Lower is faster
+const RECORDING_FRAME_RATE = 60;
+const HIGH_QUALITY_BITRATE = 12000000;
 
 // --- Power-up Settings ---
 const POWERUP_SPAWN_INTERVAL = 480; // frames, e.g., every 8 seconds
@@ -118,6 +123,9 @@ let teamIdCounter = 0, powerUpSpawnCounter = 0;
 let activeTeams = [], currentArenaName, currentGameMode = 'classic';
 let selectedPowerUpTypes = []; // New global for selected power-ups
 let animationFrameId;
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecordingHighQuality = false;
 
 // --- Utility ---
 function lightenColor(hex, percent) {
@@ -127,6 +135,98 @@ function lightenColor(hex, percent) {
     const newG = Math.min(255, g + (255 - g) * (percent / 100));
     const newB = Math.min(255, b + (255 - b) * (percent / 100));
     return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
+}
+
+// --- Recording ---
+function setRecordingUI(active) {
+    if (!toggleRecordingButton || !recordingIndicator) return;
+    if (active) {
+        toggleRecordingButton.textContent = 'Stop Recording';
+        recordingIndicator.classList.remove('hidden');
+    } else {
+        toggleRecordingButton.textContent = 'Record High Quality';
+        recordingIndicator.classList.add('hidden');
+    }
+}
+
+function startHighQualityRecording() {
+    if (typeof MediaRecorder === 'undefined' || typeof canvas.captureStream !== 'function') {
+        alert('Browser tidak mendukung fitur perekaman berkualitas tinggi.');
+        return;
+    }
+
+    const stream = canvas.captureStream(RECORDING_FRAME_RATE);
+    const preferredOptions = [
+        { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: HIGH_QUALITY_BITRATE },
+        { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: HIGH_QUALITY_BITRATE },
+        { mimeType: 'video/webm', videoBitsPerSecond: HIGH_QUALITY_BITRATE }
+    ];
+
+    let recorder = null;
+    for (const options of preferredOptions) {
+        try {
+            recorder = new MediaRecorder(stream, options);
+            break;
+        } catch (err) {
+            continue;
+        }
+    }
+    if (!recorder) {
+        try {
+            recorder = new MediaRecorder(stream);
+        } catch (err) {
+            console.error('MediaRecorder is not supported:', err);
+            alert('Maaf, fitur perekaman tidak tersedia di browser ini.');
+            return;
+        }
+    }
+
+    mediaRecorder = recorder;
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+        }
+    };
+
+    mediaRecorder.onstop = () => {
+        const hasData = recordedChunks.length > 0;
+        isRecordingHighQuality = false;
+        if (hasData) {
+            const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            link.href = url;
+            link.download = `box-fight-${timestamp}.webm`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        recordedChunks = [];
+        setRecordingUI(false);
+    };
+
+    try {
+        mediaRecorder.start();
+        isRecordingHighQuality = true;
+        setRecordingUI(true);
+    } catch (err) {
+        console.error('Failed to start recording:', err);
+        alert('Gagal memulai perekaman.');
+        setRecordingUI(false);
+    }
+}
+
+function stopHighQualityRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        isRecordingHighQuality = false;
+        setRecordingUI(false);
+    } else {
+        setRecordingUI(false);
+    }
 }
 
 // --- Classes ---
@@ -531,6 +631,14 @@ function showModeMenu() {
     battleInfo.classList.add('hidden');
     escapeMenu.classList.add('hidden');
     speedControl.classList.add('hidden');
+    if (isRecordingHighQuality) {
+        stopHighQualityRecording();
+    } else {
+        setRecordingUI(false);
+    }
+    if (recordingControls) {
+        recordingControls.classList.add('hidden');
+    }
 }
 
 function showBattleSetup(mode) {
@@ -673,6 +781,10 @@ function startGame() {
     canvas.classList.remove('hidden');
     battleInfo.classList.remove('hidden');
     speedControl.classList.remove('hidden');
+    if (recordingControls) {
+        recordingControls.classList.remove('hidden');
+        setRecordingUI(false);
+    }
     gameSpeed = 1.0;
     speedValue.textContent = '1.0x';
 
@@ -729,6 +841,15 @@ rematchButton.addEventListener('click', () => {
 });
 
 mainMenuButton.addEventListener('click', showModeMenu);
+if (toggleRecordingButton) {
+    toggleRecordingButton.addEventListener('click', () => {
+        if (isRecordingHighQuality) {
+            stopHighQualityRecording();
+        } else {
+            startHighQualityRecording();
+        }
+    });
+}
 addTeamButton.addEventListener('click', () => addTeamRow(getRandomColor(), 7, 1));
 teamsConfigDiv.addEventListener('click', (e) => {
     if (e.target.classList.contains('remove-team-btn')) {

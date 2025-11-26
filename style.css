@@ -89,6 +89,27 @@ canvas {
     color: #16a085;
 }
 
+#recordingControls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+#recordingControls .btn {
+    width: auto;
+    padding: 10px 22px;
+    font-size: 1em;
+    margin: 0;
+}
+
+.recording-indicator {
+    color: #e74c3c;
+    font-weight: 600;
+    letter-spacing: 2px;
+}
+
 #battleInfo .vs-separator {
     color: #e0e0e0;
     margin: 0 15px;
